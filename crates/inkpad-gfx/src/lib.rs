@@ -2,10 +2,12 @@
 //! rectangles, rounded rectangles, circles and lines with anti-aliased edges,
 //! plus text (see [`text`]).
 
+pub mod image;
 pub mod text;
 
+pub use image::GrayImage;
 pub use inkpad_hal::{Frame, Rect};
-pub use text::{Fonts, TextLayout, TextStyle, Weight};
+pub use text::{FamilyId, Fonts, TextLayout, TextStyle, Weight, DEFAULT_FAMILY};
 
 pub const BLACK: u8 = 0;
 pub const WHITE: u8 = 255;

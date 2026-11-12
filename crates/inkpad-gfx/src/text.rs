@@ -1,12 +1,21 @@
-//! Text: font loading, glyph cache, word-wrapping layout with ellipsis.
+//! Text: font families, glyph cache, word-wrapping layout with ellipsis.
+//!
+//! Family 0 is the bundled Atkinson Hyperlegible. More families can be added
+//! at runtime from font files (e.g. the Kindle's system fonts or
+//! `/mnt/us/fonts`); characters a family lacks fall back to family 0.
 
 use crate::Painter;
 use fontdue::{Font, FontSettings, Metrics};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 static REGULAR: &[u8] = include_bytes!("../fonts/AtkinsonHyperlegible-Regular.ttf");
 static BOLD: &[u8] = include_bytes!("../fonts/AtkinsonHyperlegible-Bold.ttf");
+
+pub type FamilyId = u8;
+/// The bundled sans-serif family.
+pub const DEFAULT_FAMILY: FamilyId = 0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Weight {
@@ -20,6 +29,8 @@ pub struct TextStyle {
     /// Font size in pixels.
     pub size: u16,
     pub weight: Weight,
+    pub italic: bool,
+    pub family: FamilyId,
     /// Gray level, 0 = black.
     pub color: u8,
     /// Line height as a multiple of the font's natural line height.
@@ -28,14 +39,26 @@ pub struct TextStyle {
 
 impl TextStyle {
     pub const fn new(size: u16) -> Self {
-        TextStyle { size, weight: Weight::Regular, color: 0, line_spacing: 1.0 }
+        TextStyle { size, weight: Weight::Regular, italic: false, family: DEFAULT_FAMILY, color: 0, line_spacing: 1.0 }
     }
     pub const fn bold(mut self) -> Self {
         self.weight = Weight::Bold;
         self
     }
+    pub const fn italic(mut self) -> Self {
+        self.italic = true;
+        self
+    }
+    pub const fn family(mut self, f: FamilyId) -> Self {
+        self.family = f;
+        self
+    }
     pub const fn color(mut self, gray: u8) -> Self {
         self.color = gray;
+        self
+    }
+    pub const fn size(mut self, px: u16) -> Self {
+        self.size = px;
         self
     }
     pub const fn spacing(mut self, s: f32) -> Self {
@@ -81,11 +104,29 @@ struct Cached {
     bitmap: Vec<u8>,
 }
 
-/// The font set plus a glyph cache. Create once and share.
-pub struct Fonts {
+struct Family {
+    name: String,
     regular: Font,
-    bold: Font,
-    cache: RefCell<HashMap<(Weight, char, u16), Cached>>,
+    bold: Option<Font>,
+    italic: Option<Font>,
+    bold_italic: Option<Font>,
+}
+
+impl Family {
+    fn pick(&self, weight: Weight, italic: bool) -> &Font {
+        match (weight, italic) {
+            (Weight::Bold, true) => self.bold_italic.as_ref().or(self.bold.as_ref()).unwrap_or(&self.regular),
+            (Weight::Bold, false) => self.bold.as_ref().unwrap_or(&self.regular),
+            (Weight::Regular, true) => self.italic.as_ref().unwrap_or(&self.regular),
+            (Weight::Regular, false) => &self.regular,
+        }
+    }
+}
+
+/// Font families plus a glyph cache. Create once and share.
+pub struct Fonts {
+    families: Vec<Family>,
+    cache: RefCell<HashMap<(FamilyId, Weight, bool, char, u16), Cached>>,
     /// Coverage gamma for text; below 1.0 makes text darker/heavier, which
     /// helps on e-ink.
     pub gamma: f32,
@@ -93,57 +134,125 @@ pub struct Fonts {
 
 const ELLIPSIS: char = '…';
 
+fn parse(bytes: Vec<u8>) -> Result<Font, String> {
+    Font::from_bytes(bytes, FontSettings::default()).map_err(|e| e.to_string())
+}
+
 impl Fonts {
     pub fn new() -> Self {
-        let load = |b: &'static [u8]| Font::from_bytes(b, FontSettings::default()).expect("bundled font");
-        Fonts { regular: load(REGULAR), bold: load(BOLD), cache: RefCell::new(HashMap::new()), gamma: 0.8 }
-    }
-
-    fn font(&self, w: Weight) -> &Font {
-        match w {
-            Weight::Regular => &self.regular,
-            Weight::Bold => &self.bold,
+        let regular = parse(REGULAR.to_vec()).expect("bundled font");
+        let bold = parse(BOLD.to_vec()).expect("bundled font");
+        Fonts {
+            families: vec![Family { name: "Atkinson Hyperlegible".into(), regular, bold: Some(bold), italic: None, bold_italic: None }],
+            cache: RefCell::new(HashMap::new()),
+            gamma: 0.8,
         }
     }
 
-    fn advance(&self, style: &TextStyle, prev: Option<char>, ch: char) -> f32 {
-        let f = self.font(style.weight);
-        let px = style.size as f32;
-        let kern = prev.and_then(|p| f.horizontal_kern(p, ch, px)).unwrap_or(0.0);
-        f.metrics(ch, px).advance_width + kern
+    /// Add a family from font file bytes (TTF/OTF). Returns its id.
+    pub fn add_family(
+        &mut self,
+        name: &str,
+        regular: Vec<u8>,
+        bold: Option<Vec<u8>>,
+        italic: Option<Vec<u8>>,
+        bold_italic: Option<Vec<u8>>,
+    ) -> Result<FamilyId, String> {
+        if self.families.len() >= FamilyId::MAX as usize {
+            return Err("too many font families".into());
+        }
+        let opt = |b: Option<Vec<u8>>| b.map(parse).transpose();
+        self.families.push(Family {
+            name: name.to_string(),
+            regular: parse(regular)?,
+            bold: opt(bold)?,
+            italic: opt(italic)?,
+            bold_italic: opt(bold_italic)?,
+        });
+        Ok((self.families.len() - 1) as FamilyId)
+    }
+
+    /// Find `<stem>-Regular.ttf` (or `<stem>.ttf`), `-Bold`, `-Italic` and
+    /// `-BoldItalic` (`.ttf` or `.otf`; `-` or `_`) in the first directory of
+    /// `dirs` that has the regular face, and add them as family `name`.
+    pub fn load_family(&mut self, name: &str, stem: &str, dirs: &[PathBuf]) -> Option<FamilyId> {
+        if let Some(id) = self.family(name) {
+            return Some(id);
+        }
+        let find = |dir: &Path, styles: &[&str]| -> Option<Vec<u8>> {
+            for style in styles {
+                for sep in ["-", "_", " "] {
+                    for ext in ["ttf", "otf", "TTF", "OTF"] {
+                        let file = if style.is_empty() { format!("{stem}.{ext}") } else { format!("{stem}{sep}{style}.{ext}") };
+                        if let Ok(b) = std::fs::read(dir.join(file)) {
+                            return Some(b);
+                        }
+                    }
+                }
+            }
+            None
+        };
+        for dir in dirs {
+            let Some(regular) = find(dir, &["Regular", ""]) else { continue };
+            let bold = find(dir, &["Bold"]);
+            let italic = find(dir, &["Italic"]);
+            let bold_italic = find(dir, &["BoldItalic", "Bold-Italic", "Bold Italic"]);
+            match self.add_family(name, regular, bold, italic, bold_italic) {
+                Ok(id) => return Some(id),
+                Err(e) => eprintln!("font {stem} in {}: {e}", dir.display()),
+            }
+        }
+        None
+    }
+
+    /// Look up a family id by name.
+    pub fn family(&self, name: &str) -> Option<FamilyId> {
+        self.families.iter().position(|f| f.name.eq_ignore_ascii_case(name)).map(|i| i as FamilyId)
+    }
+
+    pub fn family_names(&self) -> Vec<&str> {
+        self.families.iter().map(|f| f.name.as_str()).collect()
+    }
+
+    /// The font used for `ch` in `style`, falling back to the default family
+    /// when the chosen one lacks the glyph. Returns the family actually used.
+    fn font_for(&self, style: &TextStyle, ch: char) -> (FamilyId, &Font) {
+        let fam = self.families.get(style.family as usize).unwrap_or(&self.families[0]);
+        let f = fam.pick(style.weight, style.italic);
+        if style.family == DEFAULT_FAMILY || ch.is_whitespace() || f.lookup_glyph_index(ch) != 0 {
+            return (style.family.min((self.families.len() - 1) as u8), f);
+        }
+        (DEFAULT_FAMILY, self.families[0].pick(style.weight, style.italic))
     }
 
     /// Width of a single line of text (no wrapping).
     pub fn measure_line(&self, text: &str, style: &TextStyle) -> f32 {
-        let mut prev = None;
-        let mut w = 0.0;
-        for ch in text.chars() {
-            w += self.advance(style, prev, ch);
-            prev = Some(ch);
-        }
-        w
+        self.place(text, style).width
     }
 
     fn line_metrics(&self, style: &TextStyle) -> (f32, f32) {
         let px = style.size as f32;
-        let m = self.font(style.weight).horizontal_line_metrics(px);
+        let fam = self.families.get(style.family as usize).unwrap_or(&self.families[0]);
+        let m = fam.pick(style.weight, style.italic).horizontal_line_metrics(px);
         let (ascent, natural) = m.map(|m| (m.ascent, m.new_line_size)).unwrap_or((px * 0.8, px * 1.2));
         (ascent.ceil(), (natural * style.line_spacing).ceil())
     }
 
     fn place(&self, text: &str, style: &TextStyle) -> Line {
-        let mut glyphs = Vec::with_capacity(text.len());
-        let font = self.font(style.weight);
         let px = style.size as f32;
+        let mut glyphs = Vec::with_capacity(text.len());
         let mut x = 0.0;
-        let mut prev = None;
+        let mut prev: Option<(char, FamilyId)> = None;
         for ch in text.chars() {
-            if let Some(p) = prev {
-                x += font.horizontal_kern(p, ch, px).unwrap_or(0.0);
+            let (fid, font) = self.font_for(style, ch);
+            if let Some((p, pf)) = prev {
+                if pf == fid {
+                    x += font.horizontal_kern(p, ch, px).unwrap_or(0.0);
+                }
             }
             glyphs.push(PlacedGlyph { ch, x });
             x += font.metrics(ch, px).advance_width;
-            prev = Some(ch);
+            prev = Some((ch, fid));
         }
         Line { glyphs, width: x }
     }
@@ -155,7 +264,6 @@ impl Fonts {
         let limit = max_width.map(|w| w as f32).unwrap_or(f32::INFINITY);
         let max_lines = max_lines.unwrap_or(usize::MAX).max(1);
 
-        // Break into line strings first.
         let mut lines: Vec<String> = Vec::new();
         'outer: for para in text.split('\n') {
             let mut cur = String::new();
@@ -173,7 +281,6 @@ impl Fonts {
                 }
                 cur = String::new();
                 let word = word.trim_start();
-                // A word wider than the line: break it by characters.
                 if self.measure_line(word.trim_end(), &style) > limit {
                     for ch in word.chars() {
                         let c2 = format!("{cur}{ch}");
@@ -197,12 +304,9 @@ impl Fonts {
             }
         }
 
-        let mut truncated = false;
-        if lines.len() > max_lines {
-            lines.truncate(max_lines);
-            truncated = true;
-        }
+        let truncated = lines.len() > max_lines;
         if truncated {
+            lines.truncate(max_lines);
             let last = lines.last_mut().unwrap();
             let ell_w = self.measure_line(&ELLIPSIS.to_string(), &style);
             while !last.is_empty() && self.measure_line(last, &style) + ell_w > limit {
@@ -236,9 +340,10 @@ impl Fonts {
                 if g.ch.is_whitespace() {
                     continue;
                 }
-                let key = (style.weight, g.ch, style.size);
+                let (fid, font) = self.font_for(&style, g.ch);
+                let key = (fid, style.weight, style.italic, g.ch, style.size);
                 let c = cache.entry(key).or_insert_with(|| {
-                    let (metrics, bitmap) = self.font(style.weight).rasterize(g.ch, style.size as f32);
+                    let (metrics, bitmap) = font.rasterize(g.ch, style.size as f32);
                     Cached { metrics, bitmap }
                 });
                 let gx = (x as f32 + shift + g.x).round() as i32 + c.metrics.xmin;
@@ -329,5 +434,18 @@ mod tests {
         let l = f.layout("Ação já", TextStyle::new(24), None, None);
         f.draw(&mut Painter::new(&mut frame), &l, 0, 0);
         assert!(frame.pixels.iter().any(|&p| p < 128));
+    }
+
+    #[test]
+    fn add_family_and_lookup() {
+        let mut f = Fonts::new();
+        let id = f.add_family("Copy", BOLD.to_vec(), None, None, None).unwrap();
+        assert_eq!(id, 1);
+        assert_eq!(f.family("copy"), Some(1));
+        // Missing faces fall back to the family's regular face.
+        let w1 = f.measure_line("Hello", &TextStyle::new(20).family(id));
+        let w2 = f.measure_line("Hello", &TextStyle::new(20).bold());
+        assert!((w1 - w2).abs() < 0.01);
+        assert!(f.load_family("Nope", "DoesNotExist", &[PathBuf::from(".")]).is_none());
     }
 }

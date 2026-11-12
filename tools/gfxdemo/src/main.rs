@@ -175,6 +175,7 @@ fn run() -> std::io::Result<()> {
             let t = match ev {
                 Event::Quit => return Ok(()),
                 Event::Touch(t) => t,
+                _ => continue,
             };
             last = Instant::now();
             if t.phase != TouchPhase::Down {

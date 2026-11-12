@@ -113,8 +113,43 @@ pub struct Touch {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
     Touch(Touch),
+    /// A typed character from a physical keyboard (simulator).
+    Char(char),
+    Backspace,
+    Enter,
     /// The platform wants the app to close (window closed, system request).
     Quit,
+}
+
+/// Device status for the status bar.
+pub mod system {
+    /// Battery percentage and whether it is charging.
+    pub fn battery() -> Option<(u8, bool)> {
+        #[cfg(all(target_os = "linux", target_arch = "arm"))]
+        {
+            let read = |f: &str| std::fs::read_to_string(format!("/sys/class/power_supply/bd7181x_bat/{f}")).ok();
+            let pct = read("capacity")?.trim().parse().ok()?;
+            let charging = read("charging").map(|s| s.trim() == "1").unwrap_or(false);
+            Some((pct, charging))
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+        {
+            Some((87, false))
+        }
+    }
+
+    /// Whether Wi-Fi is switched on (not necessarily connected).
+    pub fn wifi_on() -> Option<bool> {
+        #[cfg(all(target_os = "linux", target_arch = "arm"))]
+        {
+            let out = std::process::Command::new("lipc-get-prop").args(["com.lab126.cmd", "wirelessEnable"]).output().ok()?;
+            Some(String::from_utf8_lossy(&out.stdout).trim() == "1")
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+        {
+            Some(true)
+        }
+    }
 }
 
 pub trait Input {

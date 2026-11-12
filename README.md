@@ -40,19 +40,84 @@ inkpad/
 ├── crates/
 │   ├── inkpad/          The crate apps depend on; picks Kindle hardware or the simulator
 │   ├── inkpad-hal/      Hardware layer: e-ink framebuffer (mxcfb ioctls) and evdev multitouch
-│   ├── inkpad-gfx/      Drawing (anti-aliased shapes) and text (wrapping, ellipsis), bundled fonts
+│   ├── inkpad-gfx/      Drawing (anti-aliased shapes), text (font families, wrapping, ellipsis), PNG/SVG images
+│   ├── inkpad-ui/       The toolkit: elements, layout, widgets, keyboard, icons, clock, runtime
 │   └── inkpad-sim/      Desktop simulator: e-ink-like window, mouse = finger, headless PNG snapshots
+├── apps/
+│   └── gallery/         Every widget on five tabs: Home (clock), Tasks, Widgets, Fonts, Media
 ├── tools/
 │   ├── hello/           M0: checks that the binary runs and reports device facts
 │   ├── touchtest/       M1: draw-with-your-finger test for display + touch
 │   └── gfxdemo/         M2: a hand-drawn Tasks screen (runs on Kindle and in the simulator)
+├── assets/              Images (and your own fonts, git-ignored) shipped to /mnt/us/inkpad/assets
 ├── kindle/
 │   ├── inkpad/          Files copied to /mnt/us/inkpad/ (launcher script, binaries)
 │   └── documents/       Library shortcuts copied to the Kindle's documents/ folder
 └── docs/                Device notes and design docs
 ```
 
-Planned crates: `inkpad-ui` (widgets, layout, refresh scheduling), `inkpad-net` (HTTPS, Wi-Fi on demand), `inkpad-store` (settings and caches), and apps under `apps/`.
+Planned crates: `inkpad-net` (HTTPS, Wi-Fi on demand) and `inkpad-store` (settings and caches).
+
+---
+
+## Writing an app
+
+An app is a state struct. `view` turns the state into an element tree, and `update` changes the state when a message arrives. The runtime does the rest:
+- it re-renders off-screen;
+- it finds which pixels changed;
+- it refreshes only those parts of the panel, with the right waveform;
+- it flashes the whole screen now and then to clear ghosting.
+
+```rust
+use inkpad::prelude::*;
+
+#[derive(Clone)]
+enum Msg { Toggle(usize), Add, Added(Option<String>) }
+
+struct Todo { items: Vec<(String, bool)> }
+
+impl App for Todo {
+    type Msg = Msg;
+
+    fn view(&self, _env: &Env) -> El<Msg> {
+        let rows = self.items.iter().enumerate().map(|(i, (t, done))| {
+            row(vec![checkbox(*done), text(t.clone()).fill_w()]).gap(16).pad(28, 14).on_tap(Msg::Toggle(i))
+        }).collect();
+        col(vec![title_bar("Todo", None, vec![icon_button("plus", Msg::Add)]), col(rows)])
+    }
+
+    fn update(&mut self, msg: Msg, ctx: &mut Ctx<Msg>) {
+        match msg {
+            Msg::Toggle(i) => self.items[i].1 ^= true,
+            Msg::Add => ctx.prompt("New task", "", Msg::Added),       // on-screen keyboard
+            Msg::Added(Some(t)) => { self.items.push((t, false)); ctx.toast("Added"); }
+            Msg::Added(None) => {}
+        }
+    }
+}
+
+fn main() { inkpad::run(Todo { items: vec![] }).unwrap() }
+```
+
+| Building blocks | |
+|---|---|
+| Layout | `col`, `row`, `stack`, `paged` (swipe or ‹ › to change page), `spacer`, `divider`; `.gap`, `.pad`, `.fill_w`, `.w(px)`, `.align`, `.justify` |
+| Content | `text` (`.size`, `.bold`, `.italic`, `.family`, `.max_lines`), `icon(name, px)`, `image(...)`, `canvas(w, h, draw)` for charts |
+| Widgets | `button`, `button_outline`, `button_icon`, `icon_button`, `checkbox`, `toggle`, `title_bar`, `card`, `chip`, `progress`, `dialog` |
+| Interaction | `.on_tap(msg)`, `.on_hold(msg)` (long press), with instant inverted press feedback |
+| `Ctx` commands | `prompt` (keyboard), `toast`, `after(duration, msg)`, `spawn(background job)`, `full_refresh`, `quit` |
+| Built in | status bar with clock, Wi-Fi and battery. Tap it for the system menu (refresh screen, exit to Kindle) |
+
+### Fonts, icons, images
+- **Fonts:** Atkinson Hyperlegible (SIL OFL) is bundled. Load any other TTF/OTF family at runtime with `assets::load_font(fonts, "Bookerly", "Bookerly")` in `App::setup`. It searches:
+  - `/mnt/us/inkpad/assets/fonts`
+  - `/mnt/us/fonts`
+  - the Kindle system fonts
+  - `assets/fonts` on a PC
+
+  Characters a font lacks fall back to the bundled one. **Never commit proprietary fonts:** `assets/fonts/` is git-ignored.
+- **Icons:** 39 [Lucide](https://lucide.dev) icons (ISC license) are bundled and drawn from SVG at any size. See `inkpad_ui::icons::NAMES`.
+- **Images:** load PNG and SVG with `assets::image("images/x.png", max_w, max_h, dither)`. Dithering to the panel's 16 gray levels makes photos look smooth.
 
 ---
 
@@ -72,10 +137,24 @@ Binaries end up in `target/armv7-unknown-linux-musleabi/release/`.
 ### Simulator
 
 ```sh
-cargo run --release -p gfxdemo                 # opens a 600×800 window; mouse = finger, Esc quits
-INKPAD_SIM_SCALE=2 cargo run --release -p gfxdemo
-INKPAD_SNAPSHOT=out.png INKPAD_TAPS="300,220" cargo run --release -p gfxdemo   # headless: tap, save PNG, exit
+cargo run --release -p gallery                 # opens a 600×800 window; mouse = finger, Esc quits
+INKPAD_SIM_SCALE=2 cargo run --release -p gallery
+INKPAD_SNAPSHOT=out.png INKPAD_TAPS="182,760;hold:300,250" cargo run --release -p gallery   # headless
 ```
+
+In the window, typing on your physical keyboard fills text prompts. In headless mode, `INKPAD_TAPS` is a `;`-separated script with these steps:
+
+| Step | Does |
+|---|---|
+| `x,y` | tap |
+| `hold:x,y` | long press |
+| `swipe:x0,y0,x1,y1` | swipe |
+| `type:text` | type text |
+| `enter` | press Enter |
+| `back` | backspace |
+| `wait:ms` | pause |
+
+The last frame is saved to the PNG.
 
 The simulator imitates the panel: content refreshes show 16 gray levels, fast (DU) refreshes show pure black and white, and full refreshes flash.
 
@@ -85,7 +164,7 @@ The simulator imitates the panel: content refreshes show 16 gray levels, fast (D
 
 ## Installing on the Kindle
 
-Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device.
+Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). To do it by hand:
 
 1. Copy `kindle/inkpad/inkpad.sh` and the built binaries into an `inkpad/` folder at the drive's root.
 2. Copy the shortcuts from `kindle/documents/` into the drive's `documents/` folder.
@@ -133,7 +212,7 @@ Environment overrides for other devices (set them in `inkpad.sh`):
 - [x] **M0, toolchain:** a static Rust binary runs on the Kindle (kernel 3.10, soft-float ARMv7)
 - [x] **M1, hardware layer:** framebuffer and e-ink refresh ioctls, multitouch, a safe launcher
 - [x] **M2, graphics + simulator:** canvas, font rendering and text layout, and a desktop window that emulates the e-ink screen, so most development happens on a PC
-- [ ] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
+- [x] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
 - [ ] **M4, Tasks app:** a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
 - [ ] **Later:**
   - a home screen (app launcher with clock, battery and Wi-Fi status), plus a sleep-screen image;
@@ -151,5 +230,7 @@ The project is early and the APIs will change. Issues and ideas are welcome, esp
 ## License
 
 Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option. Unless you explicitly state otherwise, any contribution you submit for inclusion is dual-licensed as above, without additional terms.
+
+Bundled third-party assets: Atkinson Hyperlegible font (SIL Open Font License 1.1, `crates/inkpad-gfx/fonts/OFL.txt`), Lucide icons (ISC, `crates/inkpad-ui/icons/LICENSE`).
 
 inkpad is not affiliated with Amazon. Kindle is a trademark of Amazon.com, Inc.

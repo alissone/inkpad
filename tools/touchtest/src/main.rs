@@ -103,7 +103,11 @@ mod app {
             }
             let evs = touch.poll(1000)?;
             for ev in evs {
-                let Event::Touch(t) = ev else { return Ok(()) };
+                let t = match ev {
+                    Event::Touch(t) => t,
+                    Event::Quit => return Ok(()),
+                    _ => continue,
+                };
                 last = Instant::now();
                 eprintln!("touch {:?} id={} at {},{}", t.phase, t.id, t.x, t.y);
                 let slot = (t.id.max(0) as usize).min(9);

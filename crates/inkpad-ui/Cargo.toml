@@ -1,0 +1,11 @@
+[package]
+name = "inkpad-ui"
+description = "Declarative, e-ink-first widget toolkit for inkpad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Bundled icons: Lucide (ISC license, icons/LICENSE).
+
+[dependencies]
+inkpad-hal = { path = "../inkpad-hal" }
+inkpad-gfx = { path = "../inkpad-gfx" }

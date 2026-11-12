@@ -9,17 +9,84 @@
 //! - `INKPAD_SIM_SCALE=2` doubles the window size.
 //! - `INKPAD_SNAPSHOT=file.png` runs headless: no window, each update is
 //!   written to the PNG, and the app gets `Quit` once scripted taps run out.
-//! - `INKPAD_TAPS="x,y;x,y"` scripted taps for snapshot mode.
+//! - `INKPAD_TAPS` scripted input for snapshot mode, `;`-separated steps:
+//!   `x,y` tap · `hold:x,y` long press · `swipe:x0,y0,x1,y1` ·
+//!   `type:text` · `enter` · `back` (backspace) · `wait:ms`.
 //!
-//! Keys: Esc closes the window.
+//! Keys: typing goes to text fields; Esc closes the window.
 
 use inkpad_hal::{Display, Event, Frame, Input, Rect, Touch, TouchPhase, Waveform};
-use minifb::{Key, MouseButton, MouseMode, Scale, Window, WindowOptions};
+use minifb::{InputCallback, Key, MouseButton, MouseMode, Scale, Window, WindowOptions};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// One scripted step: events to deliver, and a pause before the next one.
+type Step = (Vec<Event>, u64);
+
+fn touch(phase: TouchPhase, x: i32, y: i32) -> Event {
+    Event::Touch(Touch { id: 0, phase, x, y })
+}
+
+fn parse_script(s: &str) -> VecDeque<Step> {
+    let nums = |s: &str| -> Vec<i32> { s.split(',').filter_map(|n| n.trim().parse().ok()).collect() };
+    let mut out = VecDeque::new();
+    for step in s.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        let (kind, arg) = match step.split_once(':') {
+            Some(p) => p,
+            None if step.contains(',') => ("tap", step),
+            None => (step, ""),
+        };
+        match kind {
+            "tap" => {
+                if let [x, y] = nums(arg)[..] {
+                    out.push_back((vec![touch(TouchPhase::Down, x, y)], 0));
+                    out.push_back((vec![touch(TouchPhase::Up, x, y)], 0));
+                }
+            }
+            "hold" => {
+                if let [x, y] = nums(arg)[..] {
+                    out.push_back((vec![touch(TouchPhase::Down, x, y)], 800));
+                    out.push_back((vec![touch(TouchPhase::Up, x, y)], 0));
+                }
+            }
+            "swipe" => {
+                if let [x0, y0, x1, y1] = nums(arg)[..] {
+                    out.push_back((vec![touch(TouchPhase::Down, x0, y0)], 0));
+                    out.push_back((vec![touch(TouchPhase::Move, (x0 + x1) / 2, (y0 + y1) / 2)], 0));
+                    out.push_back((vec![touch(TouchPhase::Move, x1, y1)], 0));
+                    out.push_back((vec![touch(TouchPhase::Up, x1, y1)], 0));
+                }
+            }
+            "type" => out.push_back((arg.chars().map(Event::Char).collect(), 0)),
+            "enter" => out.push_back((vec![Event::Enter], 0)),
+            "back" => out.push_back((vec![Event::Backspace], 0)),
+            "wait" => out.push_back((vec![], arg.trim().parse().unwrap_or(0))),
+            _ => eprintln!("sim: unknown script step {step:?}"),
+        }
+    }
+    out
+}
+
+struct Typed(Arc<Mutex<VecDeque<Event>>>);
+
+impl InputCallback for Typed {
+    fn add_char(&mut self, c: u32) {
+        let ev = match c {
+            8 => Event::Backspace,
+            13 | 10 => Event::Enter,
+            c if c < 32 || c == 127 => return,
+            c => match char::from_u32(c) {
+                Some(ch) => Event::Char(ch),
+                None => return,
+            },
+        };
+        self.0.lock().unwrap().push_back(ev);
+    }
+}
 
 pub const WIDTH: u32 = 600;
 pub const HEIGHT: u32 = 800;
@@ -33,7 +100,9 @@ struct Shared {
     height: u32,
     scale: f32,
     snapshot: Option<String>,
-    taps: VecDeque<(i32, i32)>,
+    script: VecDeque<Step>,
+    typed: Arc<Mutex<VecDeque<Event>>>,
+    pause_next: u64,
     mouse_down: bool,
     last_pos: (i32, i32),
 }
@@ -65,14 +134,8 @@ impl Shared {
 pub fn open() -> io::Result<(SimDisplay, SimInput)> {
     let (width, height) = (WIDTH, HEIGHT);
     let snapshot = std::env::var("INKPAD_SNAPSHOT").ok().filter(|s| !s.is_empty());
-    let taps = std::env::var("INKPAD_TAPS")
-        .unwrap_or_default()
-        .split(';')
-        .filter_map(|p| {
-            let (x, y) = p.split_once(',')?;
-            Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
-        })
-        .collect();
+    let script = parse_script(&std::env::var("INKPAD_TAPS").unwrap_or_default());
+    let typed = Arc::new(Mutex::new(VecDeque::new()));
     let scale_n = std::env::var("INKPAD_SIM_SCALE").ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
     let window = if snapshot.is_some() {
         None
@@ -85,6 +148,7 @@ pub fn open() -> io::Result<(SimDisplay, SimInput)> {
         let opts = WindowOptions { scale, ..WindowOptions::default() };
         let mut w = Window::new("inkpad simulator", width as usize, height as usize, opts).map_err(io::Error::other)?;
         w.set_target_fps(60);
+        w.set_input_callback(Box::new(Typed(typed.clone())));
         Some(w)
     };
     let shared = Rc::new(RefCell::new(Shared {
@@ -95,7 +159,9 @@ pub fn open() -> io::Result<(SimDisplay, SimInput)> {
         height,
         scale: 1.0,
         snapshot,
-        taps,
+        script,
+        typed,
+        pause_next: 0,
         mouse_down: false,
         last_pos: (0, 0),
     }));
@@ -150,15 +216,21 @@ impl Input for SimInput {
             return Ok(vec![e]);
         }
         let mut s = self.s.borrow_mut();
-        // Headless: replay scripted taps, then quit.
+        // Headless: replay the script, then quit.
         if s.window.is_none() {
-            return Ok(match s.taps.pop_front() {
-                Some((x, y)) => {
-                    self.pending.push_back(Event::Touch(Touch { id: 0, phase: TouchPhase::Up, x, y }));
-                    vec![Event::Touch(Touch { id: 0, phase: TouchPhase::Down, x, y })]
+            // Pause *after* a step (e.g. between a hold's down and up).
+            std::thread::sleep(Duration::from_millis(std::mem::take(&mut s.pause_next)));
+            return Ok(match s.script.pop_front() {
+                Some((events, pause)) => {
+                    s.pause_next = pause;
+                    events
                 }
                 None => vec![Event::Quit],
             });
+        }
+        let typed: Vec<Event> = s.typed.lock().unwrap().drain(..).collect();
+        if !typed.is_empty() {
+            return Ok(typed);
         }
         let start = Instant::now();
         loop {

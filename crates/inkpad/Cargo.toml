@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 inkpad-hal = { path = "../inkpad-hal" }
 inkpad-gfx = { path = "../inkpad-gfx" }
+inkpad-ui = { path = "../inkpad-ui" }
 
 [target.'cfg(not(all(target_os = "linux", target_arch = "arm")))'.dependencies]
 inkpad-sim = { path = "../inkpad-sim" }
