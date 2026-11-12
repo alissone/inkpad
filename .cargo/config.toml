@@ -1,0 +1,8 @@
+# Kindle (soft-float ARMv7, static musl). rust-lld ships with rustup and the musl
+# target is self-contained (crt objects + libc.a), so no external toolchain is needed.
+[target.armv7-unknown-linux-musleabi]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=ld.lld"]
+
+[alias]
+kindle = "build --release --target armv7-unknown-linux-musleabi"

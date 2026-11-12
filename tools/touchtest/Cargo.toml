@@ -1,0 +1,9 @@
+[package]
+name = "touchtest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+inkpad-hal = { path = "../../crates/inkpad-hal" }
