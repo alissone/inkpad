@@ -1,0 +1,9 @@
+[package]
+name = "gfxdemo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+inkpad = { path = "../../crates/inkpad" }

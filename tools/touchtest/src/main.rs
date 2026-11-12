@@ -24,7 +24,7 @@ fn main() {
 #[cfg(target_os = "linux")]
 mod app {
     use inkpad_hal::kindle::{KindleDisplay, KindleTouch};
-    use inkpad_hal::{Display, Frame, Input, Rect, TouchPhase, Waveform};
+    use inkpad_hal::{Display, Event, Frame, Input, Rect, TouchPhase, Waveform};
     use std::time::{Duration, Instant};
 
     const BOX: u32 = 110;
@@ -102,7 +102,8 @@ mod app {
                 break;
             }
             let evs = touch.poll(1000)?;
-            for t in evs {
+            for ev in evs {
+                let Event::Touch(t) = ev else { return Ok(()) };
                 last = Instant::now();
                 eprintln!("touch {:?} id={} at {},{}", t.phase, t.id, t.x, t.y);
                 let slot = (t.id.max(0) as usize).min(9);

@@ -18,9 +18,18 @@ PILLOW_DISABLED=no
 AWESOME_STOPPED=no
 VOLUMD_STOPPED=no
 
+FB_DUMP=/var/tmp/inkpad-fb.dump
+
 restore() {
     [ "$VOLUMD_STOPPED" = yes ] && killall -CONT volumd
     [ "$AWESOME_STOPPED" = yes ] && killall -CONT awesome
+    # Put back the screen as it was before we started: the stock status bar
+    # only repaints the parts that change (the clock), so without this it
+    # would keep showing our pixels.
+    if [ -f "$FB_DUMP" ]; then
+        cat "$FB_DUMP" > /dev/fb0
+        rm -f "$FB_DUMP"
+    fi
     if [ "$PILLOW_DISABLED" = yes ]; then
         lipc-set-prop com.lab126.pillow disableEnablePillow enable
     fi
@@ -36,6 +45,8 @@ if [ ! -f "$BIN" ]; then
     exit 1
 fi
 chmod +x "$BIN"
+
+cat /dev/fb0 > "$FB_DUMP"
 
 # Hide the stock status bar/dialogs, freeze the window manager so it can't
 # draw over us, and pause volumd so USB storage can't pull the disk away.

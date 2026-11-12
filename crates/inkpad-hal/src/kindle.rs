@@ -3,7 +3,7 @@
 //! The ioctl numbers and struct layouts are the Linux userspace ABI of the
 //! Kindle (Lab126) `mxcfb` driver and the standard fbdev/evdev interfaces.
 
-use crate::{Display, Frame, Input, Rect, Touch, TouchPhase, Waveform};
+use crate::{Display, Event, Frame, Input, Rect, Touch, TouchPhase, Waveform};
 use std::ffi::CString;
 use std::io;
 
@@ -397,17 +397,17 @@ impl Drop for KindleTouch {
 }
 
 impl Input for KindleTouch {
-    fn poll(&mut self, timeout_ms: i32) -> io::Result<Vec<Touch>> {
-        let mut out = Vec::new();
+    fn poll(&mut self, timeout_ms: i32) -> io::Result<Vec<Event>> {
+        let mut out: Vec<Touch> = Vec::new();
         let mut pfd = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
         // SAFETY: one valid pollfd.
         let n = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
         if n < 0 {
             let e = io::Error::last_os_error();
-            return if e.kind() == io::ErrorKind::Interrupted { Ok(out) } else { Err(e) };
+            return if e.kind() == io::ErrorKind::Interrupted { Ok(Vec::new()) } else { Err(e) };
         }
         if n == 0 {
-            return Ok(out);
+            return Ok(Vec::new());
         }
         // 32-bit kernel input_event: timeval (2×i32), u16 type, u16 code, i32 value.
         let mut buf = [0u8; 16 * 64];
@@ -424,6 +424,6 @@ impl Input for KindleTouch {
                 self.handle(ty, code, value, &mut out);
             }
         }
-        Ok(out)
+        Ok(out.into_iter().map(Event::Touch).collect())
     }
 }

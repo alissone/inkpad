@@ -110,9 +110,16 @@ pub struct Touch {
     pub y: i32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Event {
+    Touch(Touch),
+    /// The platform wants the app to close (window closed, system request).
+    Quit,
+}
+
 pub trait Input {
-    /// Wait up to `timeout_ms` (-1 = forever) and return any touch changes.
-    fn poll(&mut self, timeout_ms: i32) -> io::Result<Vec<Touch>>;
+    /// Wait up to `timeout_ms` (-1 = forever) and return any events.
+    fn poll(&mut self, timeout_ms: i32) -> io::Result<Vec<Event>>;
 }
 
 #[cfg(test)]

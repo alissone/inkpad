@@ -1,27 +1,155 @@
 # inkpad
 
-A native UI framework for jailbroken e-ink Kindles, written in Rust. The goal: a modern black-and-white "PDA" with small, mostly read-only apps (tasks, calendar, reminders, an AI assistant) that launches like KOReader.
+**A native UI framework for jailbroken e-ink Kindles, written in Rust.**
 
-> Status: early spike (M0). Working name; may change before the first release.
+inkpad turns a Kindle into a modern black-and-white touchscreen PDA: small, fast, mostly read-only apps for the things you glance at during the day. Tasks, calendar, reminders, an AI assistant, nutrition charts. No browser, no web views. inkpad is a single static binary that draws directly to the e-ink panel and launches from the Kindle library, just like KOReader.
 
-## Target devices
-First target: Kindle basic 8th gen (KT3), firmware 5.16.x, 600×800 mxcfb e-ink, soft-float ARMv7. Other mxcfb Kindles should follow.
+> **Status: early development.** The hardware layer works on a real device: drawing, e-ink refresh and multitouch. The widget toolkit and the first app are next. "inkpad" is a working name.
+
+---
+
+## Why
+
+E-ink devices are ideal for calm, ambient information. They're readable in sunlight, last weeks on a charge, and nothing flashes or demands attention. Old Kindles are cheap and everywhere, but their software only reads books. KOReader showed that a jailbroken Kindle can run serious native software. inkpad aims to be the *Flutter* of that world: a toolkit with real widgets, designed for e-ink from the start, so building a useful little app takes an afternoon.
+
+### Design principles
+- **E-ink first.** No animations or scrolling: content is paged. Each screen update picks the right refresh waveform: fast black-and-white for touch feedback, full grayscale for content, and an occasional full flash to clear ghosting.
+- **One static binary.** It has no dependency on the Kindle's old system libraries, so it's easy to install and hard to break.
+- **Small and frugal.** It targets a 1 GHz single-core CPU with 512 MB RAM, and uses Wi-Fi only on demand.
+- **The stock Kindle is always safe.** The launcher always gives the screen back to the Kindle's own UI, even if an app crashes.
+- **Permissive license.** Dual MIT/Apache-2.0, with no GPL code, so anyone can build on it.
+
+---
+
+## Supported devices
+
+| Device | Status |
+|---|---|
+| Kindle basic 8th gen (KT3, 2016), firmware 5.16.x | ✅ Development device: display and touch working |
+| Other i.MX6 `mxcfb` Kindles (Paperwhite 2/3, Voyage, Oasis 1, Touch 2) | 🔜 Should work with small changes; untested |
+| Newer MediaTek Kindles (PW5, Scribe, …) | ❌ Different display driver; not planned yet |
+
+The device must be **jailbroken** (see [kindlemodding.org](https://kindlemodding.org)). Hardware details for the KT3 are in [`docs/device-kt3.md`](docs/device-kt3.md).
+
+---
+
+## Project layout
+
+```
+inkpad/
+├── crates/
+│   ├── inkpad/          The crate apps depend on; picks Kindle hardware or the simulator
+│   ├── inkpad-hal/      Hardware layer: e-ink framebuffer (mxcfb ioctls) and evdev multitouch
+│   ├── inkpad-gfx/      Drawing (anti-aliased shapes) and text (wrapping, ellipsis), bundled fonts
+│   └── inkpad-sim/      Desktop simulator: e-ink-like window, mouse = finger, headless PNG snapshots
+├── tools/
+│   ├── hello/           M0: checks that the binary runs and reports device facts
+│   ├── touchtest/       M1: draw-with-your-finger test for display + touch
+│   └── gfxdemo/         M2: a hand-drawn Tasks screen (runs on Kindle and in the simulator)
+├── kindle/
+│   ├── inkpad/          Files copied to /mnt/us/inkpad/ (launcher script, binaries)
+│   └── documents/       Library shortcuts copied to the Kindle's documents/ folder
+└── docs/                Device notes and design docs
+```
+
+Planned crates: `inkpad-ui` (widgets, layout, refresh scheduling), `inkpad-net` (HTTPS, Wi-Fi on demand), `inkpad-store` (settings and caches), and apps under `apps/`.
+
+---
 
 ## Building
-Requirements: Rust via rustup. Nothing else: the Kindle target links with the bundled `rust-lld` against Rust's self-contained musl (see `.cargo/config.toml`). On Windows without the Windows SDK, use the `stable-x86_64-pc-windows-gnu` host toolchain.
+
+You only need **Rust** ([rustup](https://rustup.rs)). The Kindle binary links with the bundled `rust-lld` against Rust's self-contained musl libc, so no cross-compiler is required.
 
 ```sh
 rustup target add armv7-unknown-linux-musleabi
-cargo kindle -p hello     # alias for: build --release --target armv7-unknown-linux-musleabi
+
+cargo kindle -p touchtest      # alias: build --release --target armv7-unknown-linux-musleabi
+cargo test                     # host-side unit tests
 ```
 
-The output is a single static binary in `target/armv7-unknown-linux-musleabi/release/`.
+Binaries end up in `target/armv7-unknown-linux-musleabi/release/`.
 
-## Running the M0 test on a Kindle
-1. Copy the `hello` binary to `inkpad/hello` on the Kindle's USB drive.
-2. Copy `kindle/documents/InkpadHello.sh` to the Kindle's `documents/` folder.
-3. Eject, open **Inkpad hello test** from the library, then read `inkpad/hello.log`.
+### Simulator
+
+```sh
+cargo run --release -p gfxdemo                 # opens a 600×800 window; mouse = finger, Esc quits
+INKPAD_SIM_SCALE=2 cargo run --release -p gfxdemo
+INKPAD_SNAPSHOT=out.png INKPAD_TAPS="300,220" cargo run --release -p gfxdemo   # headless: tap, save PNG, exit
+```
+
+The simulator imitates the panel: content refreshes show 16 gray levels, fast (DU) refreshes show pure black and white, and full refreshes flash.
+
+> **Windows note:** if the MSVC linker fails (for example, the Windows SDK isn't installed), use the GNU host toolchain: `rustup default stable-x86_64-pc-windows-gnu`. Also put that toolchain's bundled `dlltool` on PATH: `%USERPROFILE%\.rustup\toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained`.
+
+---
+
+## Installing on the Kindle
+
+Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device.
+
+1. Copy `kindle/inkpad/inkpad.sh` and the built binaries into an `inkpad/` folder at the drive's root.
+2. Copy the shortcuts from `kindle/documents/` into the drive's `documents/` folder.
+3. Eject the Kindle. The shortcuts appear in the library: **Inkpad touch test**, **Inkpad hello test**.
+
+> Shell scripts **must use LF line endings**. A script saved with Windows CRLF line endings fails silently on the Kindle.
+
+### How launching works
+Each library shortcut runs `inkpad/inkpad.sh <binary>`, which:
+1. saves the current screen;
+2. disables the stock status bar (pillow);
+3. pauses the window manager (`awesome`);
+4. pauses `volumd`, so USB storage can't unmount the disk mid-run;
+5. runs the app;
+6. **always** undoes all of the above, using a shell `trap`, even if the app crashes.
+
+The output goes to `inkpad/inkpad.log`.
+
+### If something goes wrong
+Hold the power button for about 15 seconds to restart the Kindle. Nothing is lost, and inkpad never modifies the system partition. To uninstall, delete the `inkpad/` folder and the `Inkpad*.sh` shortcuts.
+
+---
+
+## Testing the hardware layer (touchtest)
+
+Open **Inkpad touch test**:
+- Draw with your finger. Lines should follow it exactly.
+- **Top-right X box:** exits cleanly.
+- **Top-left striped box:** crashes on purpose, to prove the launcher still restores the Kindle UI.
+- **Bottom strip:** 16 gray levels, black on the left to white on the right.
+- Two fingers at once also exits, and so does 60 s without a touch.
+
+Environment overrides for other devices (set them in `inkpad.sh`):
+
+| Variable | Effect |
+|---|---|
+| `INKPAD_INVERT=1` | Panel stores 0 as white; invert on copy |
+| `INKPAD_TOUCH=swap,mirror_x,mirror_y` | Fix rotated or mirrored touch coordinates |
+| `INKPAD_TRACE=1` | Log every raw input event |
+
+---
+
+## Roadmap
+
+- [x] **M0, toolchain:** a static Rust binary runs on the Kindle (kernel 3.10, soft-float ARMv7)
+- [x] **M1, hardware layer:** framebuffer and e-ink refresh ioctls, multitouch, a safe launcher
+- [x] **M2, graphics + simulator:** canvas, font rendering and text layout, and a desktop window that emulates the e-ink screen, so most development happens on a PC
+- [ ] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
+- [ ] **M4, Tasks app:** a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
+- [ ] **Later:**
+  - a home screen (app launcher with clock, battery and Wi-Fi status), plus a sleep-screen image;
+  - a Claude assistant app;
+  - a calendar from an iCal URL;
+  - reminders and nutrition charts;
+  - an SDK for third-party apps, and docs.
+
+---
+
+## Contributing
+
+The project is early and the APIs will change. Issues and ideas are welcome, especially from people with other Kindle models who can run `hello` and `touchtest` and share their logs.
 
 ## License
-Dual-licensed under MIT or Apache-2.0, at your option. No GPL code is included.
-"# inkpad" 
+
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option. Unless you explicitly state otherwise, any contribution you submit for inclusion is dual-licensed as above, without additional terms.
+
+inkpad is not affiliated with Amazon. Kindle is a trademark of Amazon.com, Inc.
