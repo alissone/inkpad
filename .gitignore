@@ -3,3 +3,4 @@
 *.log
 # Fonts you supply yourself (e.g. Bookerly) are proprietary; never commit them.
 /assets/fonts/
+/screenshots/

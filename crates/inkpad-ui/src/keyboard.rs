@@ -103,7 +103,7 @@ pub fn keyboard<M>(layer: Layer, wrap: &dyn Fn(KeyAct) -> M) -> El<M> {
     row3.push(key(icon("delete", 28), KeyAct::Back, wrap, if letters { 3 } else { 2 }, false));
     let mode = |label: &str, l: Layer| key(text(label).size(20).bold().center_text().pad(0, 12), KeyAct::Layer(l), wrap, 3, false);
     let row4 = row(vec![
-        if letters { mode("?123", Layer::Numbers) } else { mode("abc", Layer::Lower) },
+        if layer == Layer::Numbers { mode("abc", Layer::Lower) } else { mode("?123", Layer::Numbers) },
         if layer == Layer::Accents { mode("abc", Layer::Lower) } else { mode("áé", Layer::Accents) },
         key(text("space").size(20).color(90).center_text().pad(0, 12), KeyAct::Char(' '), wrap, 10, false),
         key(icon("corner-down-left", 28).color(WHITE), KeyAct::Enter, wrap, 4, true),

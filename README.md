@@ -156,6 +156,17 @@ In the window, typing on your physical keyboard fills text prompts. In headless 
 
 The last frame is saved to the PNG.
 
+**Screenshots of everything:** `scripts\screenshots.ps1` builds the sample apps, captures every screen (each tab, the keyboard layers, dialog, toast, system menu, paging, the M2 demo) into `screenshots\`, and opens a contact sheet (`index.html`).
+
+```powershell
+powershell -File scripts\screenshots.ps1                # all shots
+powershell -File scripts\screenshots.ps1 -Only widgets* # matching shots only
+powershell -File scripts\screenshots.ps1 -List          # shot names
+powershell -File scripts\screenshots.ps1 -Live gallery  # just open the simulator window (-Scale 2 to enlarge)
+```
+
+To add a shot, add a line to the `$shots` table in the script.
+
 The simulator imitates the panel: content refreshes show 16 gray levels, fast (DU) refreshes show pure black and white, and full refreshes flash.
 
 > **Windows note:** if the MSVC linker fails (for example, the Windows SDK isn't installed), use the GNU host toolchain: `rustup default stable-x86_64-pc-windows-gnu`. Also put that toolchain's bundled `dlltool` on PATH: `%USERPROFILE%\.rustup\toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained`.
