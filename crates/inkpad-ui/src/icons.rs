@@ -19,11 +19,13 @@ macro_rules! icons {
 }
 
 icons!(
-    "arrow-big-up", "arrow-left", "battery", "battery-charging", "bell", "book-open", "calendar", "check",
-    "chevron-down", "chevron-left", "chevron-right", "circle", "circle-check", "clock", "cloud",
-    "corner-down-left", "delete", "house", "image", "info", "list-todo", "log-out", "message-circle", "moon",
-    "pencil", "plus", "refresh-cw", "search", "settings", "sparkles", "star", "sun", "trash-2",
-    "triangle-alert", "type", "utensils", "wifi", "wifi-off", "x",
+    "app-window", "arrow-big-up", "arrow-left", "battery", "battery-charging", "bed", "bell", "book-marked",
+    "book-open", "calendar", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-check",
+    "clock", "cloud", "code", "corner-down-left", "delete", "hard-drive", "house", "image", "info",
+    "layout-grid", "layout-list", "list-todo", "lock", "lock-open", "log-out", "message-circle", "monitor",
+    "moon", "palette", "pencil", "plus", "pointer", "power", "refresh-cw", "search", "settings", "shapes",
+    "sliders-horizontal", "sparkles", "star", "sun", "tablet-smartphone", "trash-2", "triangle-alert", "type",
+    "utensils", "wallpaper", "wifi", "wifi-off", "x",
 );
 
 thread_local! {

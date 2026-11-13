@@ -1,0 +1,10 @@
+[package]
+name = "home"
+description = "inkpad home screen: launcher, settings, lock and sleep screens"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+inkpad = { path = "../../crates/inkpad" }

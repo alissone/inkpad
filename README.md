@@ -41,22 +41,43 @@ inkpad/
 │   ├── inkpad/          The crate apps depend on; picks Kindle hardware or the simulator
 │   ├── inkpad-hal/      Hardware layer: e-ink framebuffer (mxcfb ioctls) and evdev multitouch
 │   ├── inkpad-gfx/      Drawing (anti-aliased shapes), text (font families, wrapping, ellipsis), PNG/SVG images
-│   ├── inkpad-ui/       The toolkit: elements, layout, widgets, keyboard, icons, clock, runtime
+│   ├── inkpad-ui/       The toolkit: elements, layout, widgets, keyboard, icons, clock, runtime,
+│   │                    and the system UI (status bar, sleep screen, PIN lock screen)
+│   ├── inkpad-store/    Storage like Android's SharedPreferences: JSON key/value files + text files
 │   └── inkpad-sim/      Desktop simulator: e-ink-like window, mouse = finger, headless PNG snapshots
 ├── apps/
+│   ├── home/            The launcher: minimal or cards layout, Settings, launches the other apps
 │   └── gallery/         Every widget on five tabs: Home (clock), Tasks, Widgets, Fonts, Media
 ├── tools/
 │   ├── hello/           M0: checks that the binary runs and reports device facts
 │   ├── touchtest/       M1: draw-with-your-finger test for display + touch
 │   └── gfxdemo/         M2: a hand-drawn Tasks screen (runs on Kindle and in the simulator)
-├── assets/              Images (and your own fonts, git-ignored) shipped to /mnt/us/inkpad/assets
+├── assets/              Images, wallpapers (and your own fonts, git-ignored) shipped to /mnt/us/inkpad/assets
 ├── kindle/
 │   ├── inkpad/          Files copied to /mnt/us/inkpad/ (launcher script, binaries)
 │   └── documents/       Library shortcuts copied to the Kindle's documents/ folder
 └── docs/                Device notes and design docs
 ```
 
-Planned crates: `inkpad-net` (HTTPS, Wi-Fi on demand) and `inkpad-store` (settings and caches).
+Planned crate: `inkpad-net` (HTTPS, Wi-Fi on demand).
+
+### Home, lock and sleep
+
+`home` is what the **Inkpad** shortcut opens. Each app is its own binary; when home launches one (`ctx.launch("gallery", &[], Msg::Closed)`, where `Closed` takes the exit result), it hands over the screen and touch until that app exits, then redraws. KOReader and "Kindle" leave inkpad.
+
+Every app gets these from the runtime for free:
+
+- **Sleep screen:** when the Kindle goes to sleep, the screen shows the sleep screen chosen in Settings (Minimal, Picture or Calendar), or the app's own `sleep_view`.
+- **PIN lock:** if a PIN is set, the lock screen appears on wake, whichever app is open. The PIN is stored salted and hashed. It keeps casual hands out; it is not encryption.
+- **Settings storage:** `Prefs::open("myapp")` gives an app its own key/value file under `inkpad/data/prefs/`; `Prefs::system()` holds the shared settings. Writes are atomic.
+
+```rust
+let mut prefs = Prefs::open("tasks");
+let n = prefs.get_i64("launches", 0);
+prefs.set("launches", n + 1); // saved immediately
+```
+
+In the simulator, **F2** is the power button. Simulator data lives in `data/` (git-ignored).
 
 ---
 
@@ -225,8 +246,9 @@ Environment overrides for other devices (set them in `inkpad.sh`):
 - [x] **M2, graphics + simulator:** canvas, font rendering and text layout, and a desktop window that emulates the e-ink screen, so most development happens on a PC
 - [x] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
 - [ ] **M4, Tasks app:** a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
+- [x] **Home screen:** launcher (minimal and cards layouts), Settings, wallpapers, sleep screen, PIN lock, preferences storage
 - [ ] **Later:**
-  - a home screen (app launcher with clock, battery and Wi-Fi status), plus a sleep-screen image;
+  - home widgets: calendar agenda, weather, next tasks;
   - a Claude assistant app;
   - a calendar from an iCal URL;
   - reminders and nutrition charts;

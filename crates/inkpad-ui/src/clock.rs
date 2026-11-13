@@ -75,6 +75,17 @@ pub fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Number of days in a month (1–12).
+pub fn days_in_month(year: i32, month: u32) -> u32 {
+    let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+    (days_from_civil(ny, nm, 1) - days_from_civil(year, month, 1)) as u32
+}
+
+/// Weekday of a date, 0 = Monday … 6 = Sunday.
+pub fn weekday_of(year: i32, month: u32, day: u32) -> u32 {
+    (days_from_civil(year, month, day) + 3).rem_euclid(7) as u32
+}
+
 /// Convert Unix seconds + offset to local fields.
 pub fn from_unix(secs: i64, offset_min: i32) -> LocalTime {
     let t = secs + offset_min as i64 * 60;
@@ -169,6 +180,8 @@ mod tests {
             assert_eq!(days_from_civil(y, m, dd), d);
         }
         assert_eq!(local.midnight_unix(), 1_794_452_400); // 2026-11-12 00:00 at UTC-3
+        assert_eq!((days_in_month(2026, 11), days_in_month(2024, 2), days_in_month(2026, 12)), (30, 29, 31));
+        assert_eq!(weekday_of(2026, 11, 12), 3); // Thursday
     }
 
     #[test]

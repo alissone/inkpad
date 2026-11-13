@@ -119,6 +119,11 @@ pub enum Event {
     Enter,
     /// The platform wants the app to close (window closed, system request).
     Quit,
+    /// The device is going to sleep (power button, timeout): show the sleep
+    /// screen now, it stays on the panel while asleep.
+    Sleep,
+    /// The device woke up.
+    Wake,
 }
 
 /// Device status for the status bar.
@@ -138,6 +143,42 @@ pub mod system {
         }
     }
 
+    #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+    static SIM_WIFI: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+    /// Switch Wi-Fi on or off.
+    pub fn set_wifi(on: bool) -> std::io::Result<()> {
+        #[cfg(all(target_os = "linux", target_arch = "arm"))]
+        {
+            let st = std::process::Command::new("lipc-set-prop").args(["com.lab126.cmd", "wirelessEnable", if on { "1" } else { "0" }]).status()?;
+            if st.success() { Ok(()) } else { Err(std::io::Error::other(format!("lipc-set-prop failed: {st}"))) }
+        }
+        #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+        {
+            SIM_WIFI.store(on, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    /// Free and total bytes on the user storage (`/mnt/us`).
+    pub fn storage() -> Option<(u64, u64)> {
+        #[cfg(target_os = "linux")]
+        {
+            let path = if cfg!(target_arch = "arm") { "/mnt/us\0" } else { "/\0" };
+            let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+            // SAFETY: NUL-terminated path and a valid out-pointer.
+            if unsafe { libc::statvfs(path.as_ptr() as *const libc::c_char, &mut st) } != 0 {
+                return None;
+            }
+            let bs = st.f_frsize as u64;
+            Some((st.f_bavail as u64 * bs, st.f_blocks as u64 * bs))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Some((2_400_000_000, 3_100_000_000))
+        }
+    }
+
     /// Whether Wi-Fi is switched on (not necessarily connected).
     pub fn wifi_on() -> Option<bool> {
         #[cfg(all(target_os = "linux", target_arch = "arm"))]
@@ -147,7 +188,7 @@ pub mod system {
         }
         #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
         {
-            Some(true)
+            Some(SIM_WIFI.load(std::sync::atomic::Ordering::Relaxed))
         }
     }
 }

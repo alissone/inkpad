@@ -73,6 +73,29 @@ pub fn chip<M>(label: &str) -> El<M> {
     text(label).size(16).bold().pad(12, 4).border(1.5, BLACK).radius(14.0)
 }
 
+/// A row of mutually exclusive choices; the selected one is filled.
+pub fn segmented<M>(options: &[&str], selected: usize, on_select: impl Fn(usize) -> M) -> El<M> {
+    let items = options
+        .iter()
+        .enumerate()
+        .map(|(i, o)| {
+            let sel = i == selected;
+            let t = text(*o).size(18).bold().center_text().color(if sel { WHITE } else { BLACK }).max_lines(1).pad(8, 12).fill_w().on_tap(on_select(i));
+            if sel { t.bg(BLACK).radius(10.0) } else { t }
+        })
+        .collect();
+    row(items).gap(4).padding(4).border(2.0, BLACK).radius(14.0)
+}
+
+/// A settings line: title, optional hint below it, and a control on the right.
+pub fn setting_row<M>(title: &str, hint: Option<&str>, trailing: El<M>) -> El<M> {
+    let mut left = vec![text(title).size(21).bold()];
+    if let Some(h) = hint {
+        left.push(text(h).size(16).color(90));
+    }
+    row(vec![col(left).gap(3).fill_w(), trailing]).gap(12).pad(0, 8)
+}
+
 /// A horizontal progress bar, `frac` in 0..=1.
 pub fn progress<M>(frac: f32, height: u32) -> El<M> {
     let frac = frac.clamp(0.0, 1.0);

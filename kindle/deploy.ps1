@@ -3,7 +3,7 @@
 param([string]$Drive = "E:", [switch]$NoBuild)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-$apps = @("gallery", "gfxdemo", "touchtest")
+$apps = @("home", "gallery", "gfxdemo", "touchtest")
 
 if (-not (Test-Path "$Drive\documents")) { throw "No Kindle at $Drive (is it in USB drive mode?)" }
 
@@ -21,13 +21,15 @@ function Copy-Lf($src, $dst) {
     [IO.File]::WriteAllText($dst, $text)
 }
 
-New-Item -ItemType Directory -Force "$Drive\inkpad\assets\images", "$Drive\inkpad\assets\fonts" | Out-Null
+New-Item -ItemType Directory -Force "$Drive\inkpad\assets\images", "$Drive\inkpad\assets\wallpapers", "$Drive\inkpad\assets\fonts", "$Drive\inkpad\data" | Out-Null
 foreach ($a in $apps) {
     Copy-Item "$root\target\armv7-unknown-linux-musleabi\release\$a" "$Drive\inkpad\$a" -Force
 }
 Copy-Lf "$root\kindle\inkpad\inkpad.sh" "$Drive\inkpad\inkpad.sh"
 Get-ChildItem "$root\kindle\documents\*.sh" | ForEach-Object { Copy-Lf $_.FullName "$Drive\documents\$($_.Name)" }
 Copy-Item "$root\assets\images\*" "$Drive\inkpad\assets\images\" -Force
+# Adds and updates wallpapers; ones you put on the Kindle yourself are kept.
+Copy-Item "$root\assets\wallpapers\*" "$Drive\inkpad\assets\wallpapers\" -Force
 # Local fonts (not in git, e.g. your own Bookerly copy) go along if present.
 if (Test-Path "$root\assets\fonts") { Copy-Item "$root\assets\fonts\*" "$Drive\inkpad\assets\fonts\" -Force }
 

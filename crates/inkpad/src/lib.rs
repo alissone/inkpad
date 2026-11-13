@@ -35,8 +35,9 @@ pub fn platform() -> io::Result<(Box<dyn Display>, Box<dyn Input>)> {
     }
 }
 
-/// Run an app on this platform until it quits.
+/// Run an app on this platform until it quits. The app can launch other
+/// apps with `Ctx::launch`.
 pub fn run<A: inkpad_ui::App>(app: A) -> io::Result<()> {
     let (d, i) = platform()?;
-    inkpad_ui::run_on(app, d, i)
+    inkpad_ui::run_with(app, d, i, Some(Box::new(platform)))
 }

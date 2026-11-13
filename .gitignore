@@ -5,3 +5,5 @@
 /assets/fonts/
 /screenshots/
 /target/
+# Settings and app data written by the simulator.
+/data/

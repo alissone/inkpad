@@ -11,9 +11,13 @@
 //!   written to the PNG, and the app gets `Quit` once scripted taps run out.
 //! - `INKPAD_TAPS` scripted input for snapshot mode, `;`-separated steps:
 //!   `x,y` tap · `hold:x,y` long press · `swipe:x0,y0,x1,y1` ·
-//!   `type:text` · `enter` · `back` (backspace) · `wait:ms`.
+//!   `type:text` · `enter` · `back` (backspace) · `wait:ms` ·
+//!   `sleep` / `wake` (power button).
+//!   The script is shared by every window this process opens (an app that
+//!   launches another app closes and reopens its window).
 //!
-//! Keys: typing goes to text fields; Esc closes the window.
+//! Keys: typing goes to text fields; F2 = power button (sleep/wake);
+//! Esc closes the window.
 
 use inkpad_hal::{Display, Event, Frame, Input, Rect, Touch, TouchPhase, Waveform};
 use minifb::{InputCallback, Key, MouseButton, MouseMode, Scale, Window, WindowOptions};
@@ -65,6 +69,8 @@ fn parse_script(s: &str) -> VecDeque<Step> {
             "enter" => out.push_back((vec![Event::Enter], 0)),
             "back" => out.push_back((vec![Event::Backspace], 0)),
             "wait" => out.push_back((vec![], arg.trim().parse().unwrap_or(0))),
+            "sleep" => out.push_back((vec![Event::Sleep], 0)),
+            "wake" => out.push_back((vec![Event::Wake], 0)),
             _ => eprintln!("sim: unknown script step {step:?}"),
         }
     }
@@ -100,11 +106,20 @@ struct Shared {
     height: u32,
     scale: f32,
     snapshot: Option<String>,
-    script: VecDeque<Step>,
     typed: Arc<Mutex<VecDeque<Event>>>,
     pause_next: u64,
     mouse_down: bool,
     last_pos: (i32, i32),
+    power_key: bool,
+}
+
+/// Simulated power state (F2 toggles it).
+static ASLEEP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The scripted input, parsed once per process and shared by every window.
+fn script() -> &'static Mutex<VecDeque<Step>> {
+    static SCRIPT: std::sync::OnceLock<Mutex<VecDeque<Step>>> = std::sync::OnceLock::new();
+    SCRIPT.get_or_init(|| Mutex::new(parse_script(&std::env::var("INKPAD_TAPS").unwrap_or_default())))
 }
 
 impl Shared {
@@ -134,7 +149,7 @@ impl Shared {
 pub fn open() -> io::Result<(SimDisplay, SimInput)> {
     let (width, height) = (WIDTH, HEIGHT);
     let snapshot = std::env::var("INKPAD_SNAPSHOT").ok().filter(|s| !s.is_empty());
-    let script = parse_script(&std::env::var("INKPAD_TAPS").unwrap_or_default());
+    script();
     let typed = Arc::new(Mutex::new(VecDeque::new()));
     let scale_n = std::env::var("INKPAD_SIM_SCALE").ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
     let window = if snapshot.is_some() {
@@ -159,11 +174,11 @@ pub fn open() -> io::Result<(SimDisplay, SimInput)> {
         height,
         scale: 1.0,
         snapshot,
-        script,
         typed,
         pause_next: 0,
         mouse_down: false,
         last_pos: (0, 0),
+        power_key: false,
     }));
     shared.borrow_mut().show();
     Ok((SimDisplay { s: shared.clone() }, SimInput { s: shared, pending: VecDeque::new() }))
@@ -220,7 +235,8 @@ impl Input for SimInput {
         if s.window.is_none() {
             // Pause *after* a step (e.g. between a hold's down and up).
             std::thread::sleep(Duration::from_millis(std::mem::take(&mut s.pause_next)));
-            return Ok(match s.script.pop_front() {
+            let step = script().lock().unwrap().pop_front();
+            return Ok(match step {
                 Some((events, pause)) => {
                     s.pause_next = pause;
                     events
@@ -235,16 +251,33 @@ impl Input for SimInput {
         let start = Instant::now();
         loop {
             let sc = s.scale;
-            let (open, esc, down, pos) = {
+            let (open, esc, power, down, pos) = {
                 let w = s.window.as_mut().unwrap();
                 w.update();
                 let pos = w.get_mouse_pos(MouseMode::Clamp).map(|(x, y)| ((x / sc) as i32, (y / sc) as i32));
-                (w.is_open(), w.is_key_down(Key::Escape), w.get_mouse_down(MouseButton::Left), pos)
+                (w.is_open(), w.is_key_down(Key::Escape), w.is_key_down(Key::F2), w.get_mouse_down(MouseButton::Left), pos)
             };
             if !open || esc {
                 return Ok(vec![Event::Quit]);
             }
             let mut out = Vec::new();
+            if power && !s.power_key {
+                let asleep = !ASLEEP.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+                out.push(if asleep { Event::Sleep } else { Event::Wake });
+            }
+            s.power_key = power;
+            if ASLEEP.load(std::sync::atomic::Ordering::Relaxed) {
+                // The panel's touch layer is off while asleep.
+                s.mouse_down = false;
+                if !out.is_empty() {
+                    return Ok(out);
+                }
+                if timeout_ms >= 0 && start.elapsed() >= Duration::from_millis(timeout_ms as u64) {
+                    return Ok(out);
+                }
+                std::thread::sleep(Duration::from_millis(8));
+                continue;
+            }
             if let Some((x, y)) = pos {
                 let t = |phase| Event::Touch(Touch { id: 0, phase, x, y });
                 if down && !s.mouse_down {

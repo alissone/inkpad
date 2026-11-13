@@ -1,0 +1,9 @@
+[package]
+name = "inkpad-store"
+description = "Small persistent storage for inkpad apps: preferences and text files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = "1"

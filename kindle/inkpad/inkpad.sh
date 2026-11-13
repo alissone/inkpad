@@ -33,10 +33,20 @@ restore() {
     if [ "$PILLOW_DISABLED" = yes ]; then
         lipc-set-prop com.lab126.pillow disableEnablePillow enable
     fi
+    if [ "$NEXT" = koreader ]; then
+        # The home app asked for KOReader: its own launcher takes the screen
+        # from here, and returns to the Kindle UI when it exits.
+        echo "=== $(date) restored, starting KOReader"
+        chmod +x "$KOREADER" 2>/dev/null
+        nohup "$KOREADER" > /dev/null 2>&1 &
+        return
+    fi
     # Bring the stock home screen back so it repaints everything.
     lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home
     echo "=== $(date) restored"
 }
+NEXT=
+KOREADER=/mnt/us/koreader/koreader.sh
 trap restore EXIT
 trap 'exit 1' INT TERM HUP
 
@@ -56,4 +66,7 @@ killall -STOP volumd && VOLUMD_STOPPED=yes
 usleep 300000
 
 "$BIN" "$@"
-echo "exit code $?"
+CODE=$?
+echo "exit code $CODE"
+# Exit codes the home app uses to hand over to something else.
+[ "$CODE" -eq 42 ] && [ -f "$KOREADER" ] && NEXT=koreader

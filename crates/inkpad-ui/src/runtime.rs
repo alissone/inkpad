@@ -4,15 +4,21 @@
 //! what the panel shows, and refreshes only the changed rectangles. Big
 //! changes, or enough accumulated small ones, get a flashing full refresh
 //! to clear ghosting.
+//!
+//! The runtime also owns the system UI every app shares: the status bar
+//! and its menu, the sleep screen, and the PIN lock screen ([`crate::sysui`]).
 
+use crate::clock::{self, LocalTime};
 use crate::el::*;
 use crate::keyboard::{prompt_view, KeyAct, PromptState};
 use crate::layout::{Layouter, Out};
+use crate::sysui;
 use crate::widgets::{button, button_outline};
-use crate::clock::{self, LocalTime};
 use inkpad_gfx::{Fonts, Frame, Painter, Rect, BLACK, WHITE};
 use inkpad_hal::{Display, Event, Input, TouchPhase, Waveform};
+use inkpad_store::Prefs;
 use std::io;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -26,6 +32,9 @@ const HOLD: Duration = Duration::from_millis(550);
 const SWIPE_PX: i32 = 90;
 const SLOP_PX: i32 = 24;
 const TOAST_FOR: Duration = Duration::from_millis(2500);
+/// The stock screensaver may paint over us right after "going to sleep";
+/// repaint the sleep screen once more after this delay.
+const SLEEP_REPAINT: Duration = Duration::from_millis(1800);
 
 /// What a view can read about its surroundings.
 pub struct Env<'a> {
@@ -34,7 +43,16 @@ pub struct Env<'a> {
     pub height: u32,
     pub fonts: &'a Fonts,
     pub now: LocalTime,
+    /// Battery percent and charging (refreshed every few minutes).
+    pub battery: Option<(u8, bool)>,
+    /// Wi-Fi switched on.
+    pub wifi: Option<bool>,
 }
+
+/// Re-opens the display and input after another app had them.
+pub type Reopen = Box<dyn Fn() -> io::Result<(Box<dyn Display>, Box<dyn Input>)>>;
+
+type LaunchFn<M> = Box<dyn Fn(Result<i32, String>) -> M>;
 
 /// Commands an app issues from `update`/`setup`.
 pub struct Ctx<M> {
@@ -50,6 +68,11 @@ enum Cmd<M> {
     After(Duration, M),
     Spawn(Box<dyn FnOnce() -> M + Send>),
     Prompt(String, String, bool, DoneFn<M>),
+    Launch(String, Vec<String>, LaunchFn<M>),
+    Lock,
+    SystemMenu,
+    Exit(i32),
+    RefreshStatus,
 }
 
 impl<M> Ctx<M> {
@@ -86,6 +109,28 @@ impl<M> Ctx<M> {
     pub fn prompt_multiline(&mut self, title: &str, initial: &str, on_done: impl Fn(Option<String>) -> M + 'static) {
         self.cmds.push(Cmd::Prompt(title.into(), initial.into(), true, Box::new(on_done)));
     }
+    /// Run another inkpad app (a binary next to this one, or a path). This
+    /// app's screen and touch are handed over until it exits; then
+    /// `on_exit` gets its exit code and the screen is redrawn.
+    pub fn launch(&mut self, program: &str, args: &[&str], on_exit: impl Fn(Result<i32, String>) -> M + 'static) {
+        self.cmds.push(Cmd::Launch(program.into(), args.iter().map(|s| s.to_string()).collect(), Box::new(on_exit)));
+    }
+    /// Show the PIN lock screen now (does nothing if no PIN is set).
+    pub fn lock(&mut self) {
+        self.cmds.push(Cmd::Lock);
+    }
+    /// Open the system menu (refresh, lock, exit), as tapping the status bar does.
+    pub fn system_menu(&mut self) {
+        self.cmds.push(Cmd::SystemMenu);
+    }
+    /// Quit with a process exit code (the launcher script can act on it).
+    pub fn exit(&mut self, code: i32) {
+        self.cmds.push(Cmd::Exit(code));
+    }
+    /// Re-read battery and Wi-Fi state now (e.g. after switching Wi-Fi).
+    pub fn refresh_status(&mut self) {
+        self.cmds.push(Cmd::RefreshStatus);
+    }
 }
 
 pub trait App: 'static {
@@ -97,6 +142,14 @@ pub trait App: 'static {
     /// Show the system status bar (clock, Wi-Fi, battery).
     fn status_bar(&self) -> bool {
         true
+    }
+    /// The device is going to sleep.
+    fn on_sleep(&mut self, _ctx: &mut Ctx<Self::Msg>) {}
+    /// The device woke up (the lock screen, if any, is shown first).
+    fn on_wake(&mut self, _ctx: &mut Ctx<Self::Msg>) {}
+    /// A custom sleep screen; `None` uses the system one from Settings.
+    fn sleep_view(&self, _env: &Env) -> Option<El<Self::Msg>> {
+        None
     }
 }
 
@@ -110,6 +163,48 @@ enum Rt<M> {
     SysMenu(bool),
     SysRefresh,
     SysQuit,
+    SysLock,
+    PinDigit(u8),
+    PinBack,
+}
+
+/// A stand-in display/input while another app owns the real ones.
+struct Released(u32, u32);
+
+impl Display for Released {
+    fn size(&self) -> (u32, u32) {
+        (self.0, self.1)
+    }
+    fn present(&mut self, _: &Frame, _: Rect, _: Waveform, _: bool) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Input for Released {
+    fn poll(&mut self, _: i32) -> io::Result<Vec<Event>> {
+        Ok(Vec::new())
+    }
+}
+
+/// Where to find an app binary: a path as given, or a name next to the
+/// running executable.
+fn resolve_program(name: &str) -> PathBuf {
+    let p = PathBuf::from(name);
+    if p.components().count() > 1 || p.is_absolute() {
+        return p;
+    }
+    let dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).unwrap_or_default();
+    dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+}
+
+/// Whether an app binary is installed next to the running one.
+pub fn app_installed(name: &str) -> bool {
+    resolve_program(name).exists()
+}
+
+struct Lock {
+    entered: String,
+    error: bool,
 }
 
 struct Pressed<M> {
@@ -143,10 +238,22 @@ struct Runtime<A: App> {
     pressed: Option<Pressed<A::Msg>>,
     status: (Option<(u8, bool)>, Option<bool>, Instant),
     quit: bool,
+    exit_code: i32,
+    sleeping: bool,
+    sleep_repaint: Option<Instant>,
+    lock: Option<Lock>,
+    reopen: Option<Reopen>,
+    launches: Vec<(String, Vec<String>, LaunchFn<A::Msg>)>,
 }
 
 /// Run `app` on the given display and input until it quits.
-pub fn run_on<A: App>(mut app: A, display: Box<dyn Display>, input: Box<dyn Input>) -> io::Result<()> {
+pub fn run_on<A: App>(app: A, display: Box<dyn Display>, input: Box<dyn Input>) -> io::Result<()> {
+    run_with(app, display, input, None)
+}
+
+/// Like [`run_on`], with a way to reopen the display and input, which lets
+/// the app launch other apps ([`Ctx::launch`]).
+pub fn run_with<A: App>(mut app: A, display: Box<dyn Display>, input: Box<dyn Input>, reopen: Option<Reopen>) -> io::Result<()> {
     let (w, h) = display.size();
     let mut fonts = Fonts::new();
     let mut ctx = Ctx::new();
@@ -175,10 +282,23 @@ pub fn run_on<A: App>(mut app: A, display: Box<dyn Display>, input: Box<dyn Inpu
         pressed: None,
         status: (inkpad_hal::system::battery(), inkpad_hal::system::wifi_on(), Instant::now()),
         quit: false,
+        exit_code: 0,
+        sleeping: false,
+        sleep_repaint: None,
+        lock: None,
+        reopen,
+        launches: Vec::new(),
     };
     rt.apply(ctx);
     rt.render()?;
-    rt.run()
+    rt.run()?;
+    if rt.exit_code != 0 {
+        // Give the screen and touch back cleanly before leaving.
+        rt.display = Box::new(Released(0, 0));
+        rt.input = Box::new(Released(0, 0));
+        std::process::exit(rt.exit_code);
+    }
+    Ok(())
 }
 
 impl<A: App> Runtime<A> {
@@ -197,8 +317,88 @@ impl<A: App> Runtime<A> {
                     });
                 }
                 Cmd::Prompt(title, initial, multi, done) => self.prompt = Some((PromptState::new(&title, &initial, multi), done)),
+                Cmd::Launch(prog, args, done) => self.launches.push((prog, args, done)),
+                Cmd::Lock => self.lock_now(),
+                Cmd::SystemMenu => self.sys_menu = true,
+                Cmd::Exit(code) => {
+                    self.quit = true;
+                    self.exit_code = code;
+                }
+                Cmd::RefreshStatus => self.refresh_status(),
             }
         }
+    }
+
+    fn refresh_status(&mut self) {
+        self.status = (inkpad_hal::system::battery(), inkpad_hal::system::wifi_on(), Instant::now());
+    }
+
+    fn lock_now(&mut self) {
+        if sysui::lock_enabled(&Prefs::system()) {
+            self.lock = Some(Lock { entered: String::new(), error: false });
+            self.sys_menu = false;
+            self.force_full = true;
+        }
+    }
+
+    /// Hand the screen to another app until it exits.
+    fn launch(&mut self, prog: &str, args: &[String]) -> Result<i32, String> {
+        let Some(reopen) = &self.reopen else { return Err("this app cannot launch others".into()) };
+        let path = resolve_program(prog);
+        if !path.exists() {
+            return Err(format!("{} is not installed", path.display()));
+        }
+        eprintln!("launch: {} {args:?}", path.display());
+        self.display = Box::new(Released(self.w, self.h));
+        self.input = Box::new(Released(self.w, self.h));
+        // Scripted simulator input belongs to this process, not the child.
+        let status = std::process::Command::new(&path).args(args).env_remove("INKPAD_TAPS").status();
+        match reopen() {
+            Ok((d, i)) => {
+                self.display = d;
+                self.input = i;
+            }
+            Err(e) => {
+                eprintln!("launch: could not take the screen back: {e}");
+                self.quit = true;
+                return Err(e.to_string());
+            }
+        }
+        self.first = true;
+        self.pressed = None;
+        self.refresh_status();
+        let code = status.map_err(|e| e.to_string())?.code().unwrap_or(-1);
+        eprintln!("launch: exited with {code}");
+        Ok(code)
+    }
+
+    fn go_to_sleep(&mut self) {
+        if self.sleeping {
+            return;
+        }
+        let mut ctx = Ctx::new();
+        self.app.on_sleep(&mut ctx);
+        self.apply(ctx);
+        self.sleeping = true;
+        self.sys_menu = false;
+        self.toast = None;
+        self.pressed = None;
+        self.force_full = true;
+        self.sleep_repaint = Some(Instant::now() + SLEEP_REPAINT);
+    }
+
+    fn wake_up(&mut self) {
+        if !self.sleeping {
+            return;
+        }
+        self.sleeping = false;
+        self.sleep_repaint = None;
+        self.refresh_status();
+        self.lock_now();
+        let mut ctx = Ctx::new();
+        self.app.on_wake(&mut ctx);
+        self.apply(ctx);
+        self.force_full = true;
     }
 
     fn dispatch(&mut self, msg: A::Msg) {
@@ -229,6 +429,31 @@ impl<A: App> Runtime<A> {
                 self.force_full = true;
             }
             Rt::SysQuit => self.quit = true,
+            Rt::SysLock => {
+                self.sys_menu = false;
+                self.lock_now();
+            }
+            Rt::PinDigit(d) => {
+                let prefs = Prefs::system();
+                if let Some(l) = &mut self.lock {
+                    l.error = false;
+                    l.entered.push(char::from(b'0' + d));
+                    if l.entered.len() >= sysui::pin_len(&prefs) {
+                        if sysui::check_pin(&prefs, &l.entered) {
+                            self.lock = None;
+                            self.force_full = true;
+                        } else {
+                            l.entered.clear();
+                            l.error = true;
+                        }
+                    }
+                }
+            }
+            Rt::PinBack => {
+                if let Some(l) = &mut self.lock {
+                    l.entered.pop();
+                }
+            }
         }
     }
 
@@ -241,7 +466,7 @@ impl<A: App> Runtime<A> {
         }
         if let Some((pct, charging)) = bat {
             right.push(text(format!("{pct}%")).size(17).bold());
-            right.push(battery_icon(pct, charging));
+            right.push(sysui::battery_icon(pct, charging));
         }
         let mut kids = vec![text(now.hm()).size(18).bold(), spacer()];
         kids.extend(right);
@@ -249,7 +474,7 @@ impl<A: App> Runtime<A> {
     }
 
     fn sys_menu_view(&self) -> El<Rt<A::Msg>> {
-        let card = col(vec![
+        let mut items = vec![
             text("inkpad").size(28).bold(),
             text({
                 let n = clock::now();
@@ -258,9 +483,13 @@ impl<A: App> Runtime<A> {
             .size(20)
             .color(60),
             button_outline("Refresh screen", Rt::SysRefresh).fill_w(),
-            button_outline("Exit to Kindle", Rt::SysQuit).fill_w(),
-            button("Close", Rt::SysMenu(false)).fill_w(),
-        ])
+        ];
+        if sysui::lock_enabled(&Prefs::system()) {
+            items.push(button_outline("Lock", Rt::SysLock).fill_w());
+        }
+        items.push(button_outline("Exit to Kindle", Rt::SysQuit).fill_w());
+        items.push(button("Close", Rt::SysMenu(false)).fill_w());
+        let card = col(items)
         .gap(16)
         .padding(28)
         .bg(WHITE)
@@ -274,10 +503,21 @@ impl<A: App> Runtime<A> {
         col(vec![spacer(), row(vec![spacer(), pill, spacer()])]).pad_edges(Edges { top: 0, right: 20, bottom: 110, left: 20 })
     }
 
-    fn render(&mut self) -> io::Result<()> {
-        let app_h = if self.app.status_bar() { self.h - STATUS_H } else { self.h };
-        let env = Env { width: self.w, height: app_h, fonts: &self.fonts, now: clock::now() };
+    fn root_view(&self) -> El<Rt<A::Msg>> {
+        let now = clock::now();
         let wrap: Rc<dyn Fn(A::Msg) -> Rt<A::Msg>> = Rc::new(Rt::App);
+        if self.sleeping {
+            let env = Env { width: self.w, height: self.h, fonts: &self.fonts, now, battery: self.status.0, wifi: self.status.1 };
+            return match self.app.sleep_view(&env) {
+                Some(v) => v.map(&wrap).fill(),
+                None => sysui::sleep_view(&Prefs::system(), &now, self.w, self.h).fill(),
+            };
+        }
+        if let Some(l) = &self.lock {
+            return sysui::lock_view(&Prefs::system(), &now, self.w, self.h, l.entered.len(), l.error, Rt::PinDigit, Rt::PinBack).fill().block_taps();
+        }
+        let app_h = if self.app.status_bar() { self.h - STATUS_H } else { self.h };
+        let env = Env { width: self.w, height: app_h, fonts: &self.fonts, now, battery: self.status.0, wifi: self.status.1 };
         let app_el = self.app.view(&env).map(&wrap).fill();
         let mut root = if self.app.status_bar() { col(vec![self.status_view(), app_el]) } else { col(vec![app_el]) };
         if self.sys_menu {
@@ -289,6 +529,11 @@ impl<A: App> Runtime<A> {
         if let Some((t, _)) = &self.toast {
             root = stack(vec![root, Self::toast_view(t)]);
         }
+        root
+    }
+
+    fn render(&mut self) -> io::Result<()> {
+        let root = self.root_view();
         let layouter = Layouter::new(&self.fonts);
         let mut out = Out::default();
         layouter.place(&root, Rect::new(0, 0, self.w, self.h), &mut out);
@@ -401,6 +646,9 @@ impl<A: App> Runtime<A> {
         if self.running > 0 {
             wake = wake.min(Duration::from_millis(100));
         }
+        if let Some(t) = self.sleep_repaint {
+            wake = wake.min(t.saturating_duration_since(inst));
+        }
         wake.as_millis().min(60_000) as i32
     }
 
@@ -412,6 +660,15 @@ impl<A: App> Runtime<A> {
             for ev in events {
                 match ev {
                     Event::Quit => return Ok(()),
+                    Event::Sleep => {
+                        self.go_to_sleep();
+                        dirty = true;
+                    }
+                    Event::Wake => {
+                        self.wake_up();
+                        dirty = true;
+                    }
+                    Event::Touch(_) if self.sleeping => {}
                     Event::Touch(t) if t.id == 0 => dirty |= self.on_touch(t.phase, t.x, t.y)?,
                     Event::Touch(_) => {}
                     Event::Char(c) if self.prompt.is_some() => {
@@ -447,14 +704,30 @@ impl<A: App> Runtime<A> {
                 self.toast = None;
                 dirty = true;
             }
+            if self.sleep_repaint.is_some_and(|t| t <= now) {
+                self.sleep_repaint = None;
+                self.force_full = true;
+            }
+            // Apps launched from `update`.
+            for (prog, args, done) in std::mem::take(&mut self.launches) {
+                let r = self.launch(&prog, &args);
+                if let Err(e) = &r {
+                    eprintln!("launch {prog}: {e}");
+                }
+                self.dispatch(done(r));
+                dirty = true;
+            }
             // Clock and device status.
             let m = clock::unix_now() / 60;
             if m != minute {
                 minute = m;
                 dirty = true;
-                if self.status.2.elapsed() > Duration::from_secs(240) {
-                    self.status = (inkpad_hal::system::battery(), inkpad_hal::system::wifi_on(), Instant::now());
+                if self.status.2.elapsed() > Duration::from_secs(240) && !self.sleeping {
+                    self.refresh_status();
                 }
+            }
+            if self.quit {
+                break;
             }
             if dirty || self.force_full {
                 self.render()?;
@@ -462,16 +735,6 @@ impl<A: App> Runtime<A> {
         }
         Ok(())
     }
-}
-
-fn battery_icon<M>(pct: u8, charging: bool) -> El<M> {
-    canvas(30, 16, move |p, r| {
-        let body = Rect::new(r.x, r.y, 27, 16);
-        p.round_rect(body, 3.0, BLACK, Some(2.0));
-        p.fill_rect(Rect::new(r.x + 27, r.y + 5, 3, 6), BLACK);
-        let w = (21 * pct.min(100) as u32) / 100;
-        p.fill_rect(Rect::new(r.x + 3, r.y + 3, w.max(1), 10), if charging { 110 } else { BLACK });
-    })
 }
 
 /// Rectangles where `a` and `b` differ, grouped into horizontal bands.

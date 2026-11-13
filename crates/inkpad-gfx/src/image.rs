@@ -88,6 +88,36 @@ impl GrayImage {
         self.resize(w, h)
     }
 
+    /// Scale to fill exactly `w`×`h`, cropping the overflow evenly (like CSS
+    /// `object-fit: cover`). For wallpapers.
+    pub fn cover(&self, w: u32, h: u32) -> Self {
+        let s = (w as f32 / self.width as f32).max(h as f32 / self.height as f32);
+        let (sw, sh) = (((self.width as f32 * s).ceil() as u32).max(w), ((self.height as f32 * s).ceil() as u32).max(h));
+        self.resize(sw, sh).crop((sw - w) / 2, (sh - h) / 2, w, h)
+    }
+
+    /// Cut out a `w`×`h` region starting at (`x`, `y`).
+    pub fn crop(&self, x: u32, y: u32, w: u32, h: u32) -> Self {
+        let (w, h) = (w.min(self.width.saturating_sub(x)), h.min(self.height.saturating_sub(y)));
+        let cut = |src: &[u8]| -> Vec<u8> {
+            let mut out = Vec::with_capacity((w * h) as usize);
+            for row in y..y + h {
+                let i = (row * self.width + x) as usize;
+                out.extend_from_slice(&src[i..i + w as usize]);
+            }
+            out
+        };
+        GrayImage { width: w, height: h, pixels: cut(&self.pixels), alpha: self.alpha.as_deref().map(cut) }
+    }
+
+    /// Fade toward white: `amount` 0 = unchanged, 1 = blank. Keeps black
+    /// text readable on top of a picture.
+    pub fn fade(&self, amount: f32) -> Self {
+        let a = amount.clamp(0.0, 1.0);
+        let pixels = self.pixels.iter().map(|&p| (p as f32 + (255.0 - p as f32) * a).round() as u8).collect();
+        GrayImage { width: self.width, height: self.height, pixels, alpha: self.alpha.clone() }
+    }
+
     pub fn resize(&self, w: u32, h: u32) -> Self {
         if (w, h) == (self.width, self.height) {
             return self.clone();
@@ -210,5 +240,9 @@ mod tests {
         assert_eq!((small.width, small.height), (50, 5));
         let d = img.dither16();
         assert!(d.pixels.iter().all(|&p| p % 17 == 0));
+        let c = img.cover(30, 30);
+        assert_eq!((c.width, c.height), (30, 30));
+        assert!(c.pixels[0] > 80 && c.pixels[29] < 175, "center crop of the gradient");
+        assert_eq!(GrayImage::new(2, 2, 0).fade(0.5).pixels[0], 128);
     }
 }

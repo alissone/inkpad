@@ -9,3 +9,5 @@ license.workspace = true
 [dependencies]
 inkpad-hal = { path = "../inkpad-hal" }
 inkpad-gfx = { path = "../inkpad-gfx" }
+inkpad-store = { path = "../inkpad-store" }
+sha2 = { version = "0.10", default-features = false }

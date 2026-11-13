@@ -285,6 +285,64 @@ pub struct KindleTouch {
     /// Single-touch fallback state (no MT slots seen).
     st_down: bool,
     saw_mt: bool,
+    power: Option<PowerWatch>,
+}
+
+/// Sleep/wake notifications from the power daemon, read from a
+/// `lipc-wait-event -m` child process (no need to link liblipc).
+struct PowerWatch {
+    child: std::process::Child,
+    fd: i32,
+    buf: Vec<u8>,
+}
+
+impl PowerWatch {
+    fn start() -> Option<PowerWatch> {
+        use std::os::unix::io::AsRawFd;
+        let child = std::process::Command::new("lipc-wait-event")
+            .args(["-m", "com.lab126.powerd", "goingToScreenSaver,outOfScreenSaver"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| eprintln!("power: lipc-wait-event: {e}"))
+            .ok()?;
+        let fd = child.stdout.as_ref()?.as_raw_fd();
+        // SAFETY: setting O_NONBLOCK on a pipe fd we own.
+        unsafe {
+            let fl = libc::fcntl(fd, libc::F_GETFL);
+            libc::fcntl(fd, libc::F_SETFL, fl | libc::O_NONBLOCK);
+        }
+        Some(PowerWatch { child, fd, buf: Vec::new() })
+    }
+
+    fn read(&mut self, out: &mut Vec<Event>) {
+        let mut tmp = [0u8; 256];
+        loop {
+            // SAFETY: reading into a local buffer.
+            let r = unsafe { libc::read(self.fd, tmp.as_mut_ptr() as *mut _, tmp.len()) };
+            if r <= 0 {
+                break;
+            }
+            self.buf.extend_from_slice(&tmp[..r as usize]);
+        }
+        while let Some(nl) = self.buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = self.buf.drain(..=nl).collect();
+            let line = String::from_utf8_lossy(&line);
+            eprintln!("power: {}", line.trim());
+            if line.starts_with("goingToScreenSaver") {
+                out.push(Event::Sleep);
+            } else if line.starts_with("outOfScreenSaver") {
+                out.push(Event::Wake);
+            }
+        }
+    }
+}
+
+impl Drop for PowerWatch {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 fn abs_range(fd: i32, abs: u16) -> Option<(i32, i32)> {
@@ -319,7 +377,8 @@ impl KindleTouch {
             s.id = -1;
             s.reported_id = -1;
         }
-        Ok(KindleTouch { fd, slots, cur: 0, range_x, range_y, screen, xf, st_down: false, saw_mt: false })
+        let power = if std::env::var_os("INKPAD_NO_POWER").is_some() { None } else { PowerWatch::start() };
+        Ok(KindleTouch { fd, slots, cur: 0, range_x, range_y, screen, xf, st_down: false, saw_mt: false, power })
     }
 
     fn map(&self, x: i32, y: i32) -> (i32, i32) {
@@ -399,15 +458,28 @@ impl Drop for KindleTouch {
 impl Input for KindleTouch {
     fn poll(&mut self, timeout_ms: i32) -> io::Result<Vec<Event>> {
         let mut out: Vec<Touch> = Vec::new();
-        let mut pfd = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
-        // SAFETY: one valid pollfd.
-        let n = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+        let mut pfds = [
+            libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: self.power.as_ref().map(|p| p.fd).unwrap_or(-1), events: libc::POLLIN, revents: 0 },
+        ];
+        // SAFETY: two valid pollfds (a negative fd is ignored by poll).
+        let n = unsafe { libc::poll(pfds.as_mut_ptr(), 2, timeout_ms) };
         if n < 0 {
             let e = io::Error::last_os_error();
             return if e.kind() == io::ErrorKind::Interrupted { Ok(Vec::new()) } else { Err(e) };
         }
         if n == 0 {
             return Ok(Vec::new());
+        }
+        let mut events = Vec::new();
+        if pfds[1].revents != 0 {
+            if let Some(p) = self.power.as_mut() {
+                p.read(&mut events);
+                if pfds[1].revents & (libc::POLLHUP | libc::POLLERR) != 0 && pfds[1].revents & libc::POLLIN == 0 {
+                    eprintln!("power: watcher exited");
+                    self.power = None;
+                }
+            }
         }
         // 32-bit kernel input_event: timeval (2×i32), u16 type, u16 code, i32 value.
         let mut buf = [0u8; 16 * 64];
@@ -424,6 +496,7 @@ impl Input for KindleTouch {
                 self.handle(ty, code, value, &mut out);
             }
         }
-        Ok(out.into_iter().map(Event::Touch).collect())
+        events.extend(out.into_iter().map(Event::Touch));
+        Ok(events)
     }
 }

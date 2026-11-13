@@ -3,7 +3,7 @@
 #   powershell -File scripts\screenshots.ps1               # build, shoot all, open contact sheet
 #   powershell -File scripts\screenshots.ps1 -Only tasks*  # just the matching shots
 #   powershell -File scripts\screenshots.ps1 -NoBuild -NoOpen
-#   powershell -File scripts\screenshots.ps1 -Live gallery # open the simulator window (mouse = finger)
+#   powershell -File scripts\screenshots.ps1 -Live home    # open the simulator window (mouse = finger, F2 = power)
 #   powershell -File scripts\screenshots.ps1 -List         # list shot names
 #
 # Shots run headless: the simulator replays the INKPAD_TAPS script, writes the
@@ -37,8 +37,39 @@ $kbShift = "46,700"       # keyboard shift
 $agrave = "$([char]0xE0)s"                              # "às"
 $acao = "A$([char]0xE7)$([char]0xE3)o"                 # "Ação"
 
-# name, app, description, tap script
+# Home app positions.
+$hSettings = "60,682"     # "Settings" in the minimal app list
+$hTab = @{ display = "90,146"; wallpaper = "90,202"; lock = "90,262"; sleep = "90,320"; network = "90,378"; about = "90,436" }
+$pinOn = "500,200"        # Lock tab: PIN switch
+$pin1234 = "272,258;392,258;512,258;272,366"   # on the Settings PIN pad
+$lock1234 = "178,376;298,376;418,376;178,486"  # on the lock screen pad
+$setPin = "$hSettings;$($hTab.lock);$pinOn;$pin1234;$pin1234"
+$wall = '{"wallpaper":"ridges.png"}'
+
+# name, app, description, tap script, [system prefs JSON to start with]
+# Every shot runs with its own empty data folder, so your settings are untouched.
 $shots = @(
+    @("home-minimal", "home", "Home: minimal layout", ""),
+    @("home-minimal-wall", "home", "Minimal over a wallpaper", "", $wall),
+    @("home-minimal-contours", "home", "Minimal, contours wallpaper", "", '{"wallpaper":"contours.png"}'),
+    @("home-cards", "home", "Home: cards layout", "", '{"home.style":"cards"}'),
+    @("home-system-menu", "home", "Status tapped: system menu", "560,24"),
+    @("settings-display", "home", "Settings: Display", "$hSettings"),
+    @("settings-wallpaper", "home", "Settings: Wallpaper", "$hSettings;$($hTab.wallpaper)", $wall),
+    @("settings-lock", "home", "Settings: Lock screen", "$hSettings;$($hTab.lock)"),
+    @("settings-pin-setup", "home", "Choosing a PIN", "$hSettings;$($hTab.lock);$pinOn;272,258;392,258"),
+    @("settings-pin-on", "home", "PIN set", "$setPin"),
+    @("settings-sleep", "home", "Settings: Sleep screen", "$hSettings;$($hTab.sleep)"),
+    @("settings-network", "home", "Settings: Network", "$hSettings;$($hTab.network)"),
+    @("settings-about", "home", "Settings: About", "$hSettings;$($hTab.about)"),
+    @("sleep-minimal", "home", "Sleep screen: minimal", "sleep"),
+    @("sleep-picture", "home", "Sleep screen: picture", "sleep", '{"wallpaper":"ridges.png","sleep.mode":"picture"}'),
+    @("sleep-calendar", "home", "Sleep screen: calendar", "sleep", '{"wallpaper":"dunes.png","sleep.mode":"calendar"}'),
+    @("lock-screen", "home", "Woken up with a PIN set", "$setPin;sleep;wake"),
+    @("lock-wrong-pin", "home", "Wrong PIN", "$setPin;sleep;wake;178,376;178,376;178,376;178,376"),
+    @("lock-wallpaper", "home", "Lock screen over a wallpaper", "$hSettings;$($hTab.lock);$pinOn;$pin1234;$pin1234;sleep;wake;178,376", '{"wallpaper":"contours.png"}'),
+    @("home-launch-gallery", "home", "Opened Gallery and came back", "60,566"),
+
     @("home", "gallery", "Home tab: big clock, cards", ""),
     @("system-menu", "gallery", "Status bar tapped: system menu", "$status"),
     @("tasks", "gallery", "Tasks tab, page 1", "$($tab.tasks)"),
@@ -87,11 +118,16 @@ if ($Live) {
 New-Item -ItemType Directory -Force $Out | Out-Null
 Push-Location $root
 $done = @()
+$data = Join-Path ([IO.Path]::GetTempPath()) "inkpad-shots-data"
 foreach ($s in $shots) {
-    $name, $app, $desc, $taps = $s
+    $name, $app, $desc, $taps, $prefs = $s
     if ($name -notlike $Only) { continue }
     $png = Join-Path $Out "$name.png"
     Remove-Item $png -ErrorAction SilentlyContinue
+    Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force "$data\prefs" | Out-Null
+    if ($prefs) { [IO.File]::WriteAllText("$data\prefs\system.json", $prefs) }
+    $env:INKPAD_DATA = $data
     $env:INKPAD_SNAPSHOT = $png
     $env:INKPAD_TAPS = $taps
     $ErrorActionPreference = "Continue"  # apps log to stderr; that's not a failure
@@ -100,7 +136,8 @@ foreach ($s in $shots) {
     if (Test-Path $png) { Write-Host ("  ok  {0,-18} {1}" -f $name, $desc); $done += , $s }
     else { Write-Host ("  FAIL {0,-18} (no image)" -f $name) -ForegroundColor Red }
 }
-Remove-Item Env:INKPAD_SNAPSHOT, Env:INKPAD_TAPS -ErrorAction SilentlyContinue
+Remove-Item Env:INKPAD_SNAPSHOT, Env:INKPAD_TAPS, Env:INKPAD_DATA -ErrorAction SilentlyContinue
+Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
 Pop-Location
 
 # Contact sheet.
