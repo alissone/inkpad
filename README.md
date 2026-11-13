@@ -6,6 +6,11 @@ inkpad turns a Kindle into a modern black-and-white touchscreen PDA: small, fast
 
 > **Status: early development.** The hardware layer works on a real device: drawing, e-ink refresh and multitouch. The widget toolkit and the first app are next. "inkpad" is a working name.
 
+## Disclaimer
+
+I am not a Rust developer, so almost 100% of the code is written by coding agents. With that being said, all feature planning, design choices, ui layout, ideas for widgets are done by me. I am also open to PRs, ideas for new widgets and applications using them!
+
+
 ---
 
 ## Why
