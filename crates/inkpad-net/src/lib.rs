@@ -28,12 +28,19 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
     pub timeout: Duration,
+    /// Follow redirects (up to 5).
+    pub follow: bool,
+    /// Give up on bodies bigger than this many bytes.
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Response {
     pub status: u16,
+    /// The body as text (invalid UTF-8 replaced).
     pub body: String,
+    /// The body as it came (images and other binary files).
+    pub bytes: Vec<u8>,
 }
 
 impl Response {
@@ -66,7 +73,7 @@ impl std::fmt::Display for NetError {
 
 impl Request {
     pub fn new(method: &str, url: &str) -> Request {
-        Request { method: method.into(), url: url.into(), headers: Vec::new(), body: None, timeout: Duration::from_secs(30) }
+        Request { method: method.into(), url: url.into(), headers: Vec::new(), body: None, timeout: Duration::from_secs(30), follow: false, max_bytes: None }
     }
     pub fn get(url: &str) -> Request {
         Self::new("GET", url)
@@ -90,6 +97,16 @@ impl Request {
     }
     pub fn timeout(mut self, d: Duration) -> Request {
         self.timeout = d;
+        self
+    }
+    /// Follow HTTP redirects (feeds and images often move).
+    pub fn follow_redirects(mut self) -> Request {
+        self.follow = true;
+        self
+    }
+    /// Fail instead of downloading more than `n` bytes.
+    pub fn max_bytes(mut self, n: u64) -> Request {
+        self.max_bytes = Some(n);
         self
     }
     pub fn send(&self) -> Result<Response, NetError> {
@@ -182,6 +199,12 @@ pub fn send(req: &Request) -> Result<Response, NetError> {
         cfg.push_str(&format!("data-binary = {}\n", cfg_quote(&format!("@{}", body_path.display()))));
     }
     cfg.push_str("silent\nshow-error\n");
+    if req.follow {
+        cfg.push_str("location\nmax-redirs = 5\n");
+    }
+    if let Some(n) = req.max_bytes {
+        cfg.push_str(&format!("max-filesize = {n}\n"));
+    }
     cfg.push_str(&format!("max-time = {}\nconnect-timeout = 15\n", req.timeout.as_secs().max(5)));
     cfg.push_str(&format!("write-out = {}\n", cfg_quote("\n%{http_code}")));
     if let Some(ca) = ca_bundle() {
@@ -195,14 +218,18 @@ pub fn send(req: &Request) -> Result<Response, NetError> {
         return Err(match out.status.code() {
             Some(5 | 6 | 7) => NetError::Offline(err),
             Some(28) => NetError::Timeout,
+            Some(63) => NetError::Tool("file too big".into()),
             Some(35 | 51 | 53 | 54 | 58 | 59 | 60 | 77 | 80 | 82 | 83 | 90 | 91) => NetError::Tls(err),
             c => NetError::Tool(format!("curl failed ({}): {err}", c.unwrap_or(-1))),
         });
     }
-    let text = String::from_utf8_lossy(&out.stdout).into_owned();
-    let (body, code) = text.rsplit_once('\n').unwrap_or(("", text.as_str()));
-    let status = code.trim().parse().map_err(|_| NetError::Tool(format!("unexpected curl output: {code:?}")))?;
-    Ok(Response { status, body: body.to_string() })
+    // The body, then "\n<status>" from write-out.
+    let mut bytes = out.stdout;
+    let split = bytes.iter().rposition(|&b| b == b'\n');
+    let code = String::from_utf8_lossy(&bytes[split.map_or(0, |i| i + 1)..]).trim().to_string();
+    bytes.truncate(split.unwrap_or(0));
+    let status = code.parse().map_err(|_| NetError::Tool(format!("unexpected curl output: {code:?}")))?;
+    Ok(Response { status, body: String::from_utf8_lossy(&bytes).into_owned(), bytes })
 }
 
 /// Percent-encode for URLs, keeping `safe` characters (plus unreserved).

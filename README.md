@@ -218,7 +218,7 @@ The simulator imitates the panel: content refreshes show 16 gray levels, fast (D
 
 ## Installing on the Kindle
 
-Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). `powershell -File kindle\deploy-all.ps1` does that and also installs the app projects kept next to inkpad (`inkpad-library`, `inkpad-tasks`, `inkpad-calculator`; change the list with `-Apps`). To do it by hand:
+Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). `powershell -File kindle\deploy-all.ps1` does that and also installs the app projects kept next to inkpad (`inkpad-library`, `inkpad-tasks`, `inkpad-calculator`, `inkpad-news`; change the list with `-Apps`). To do it by hand:
 
 1. Copy `kindle/inkpad/inkpad.sh` and the built binaries into an `inkpad/` folder at the drive's root.
 2. Copy the shortcuts from `kindle/documents/` into the drive's `documents/` folder.
