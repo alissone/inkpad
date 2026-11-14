@@ -1,12 +1,12 @@
 # Deploy inkpad and install your apps onto the Kindle, in one go.
-# Usage (from anywhere):  powershell -File kindle\deploy-all.ps1 [-Drive E:] [-NoBuild] [-Apps inkpad-library,inkpad-tasks]
+# Usage (from anywhere):  powershell -File kindle\deploy-all.ps1 [-Drive E:] [-NoBuild] [-Apps inkpad-library,inkpad-tasks,inkpad-calculator]
 #
 # Runs kindle\deploy.ps1 (home, bundled samples, assets), then installs each app
 # project found next to inkpad (Projetos\inkpad-library, Projetos\inkpad-tasks...).
 param(
     [string]$Drive = "E:",
     [switch]$NoBuild,
-    [string[]]$Apps = @("inkpad-library", "inkpad-tasks")
+    [string[]]$Apps = @("inkpad-library", "inkpad-tasks", "inkpad-calculator")
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
