@@ -14,7 +14,8 @@ mod settings;
 
 use apps::{Action, AppEntry};
 use inkpad::prelude::*;
-use inkpad::ui::{clock, sysui, sysui::keys};
+use inkpad::ui::apps::AppManifest;
+use inkpad::ui::{clock, handoff, sysui, sysui::keys};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Screen {
@@ -35,7 +36,7 @@ pub enum Tab {
 #[derive(Clone, Debug)]
 pub enum Msg {
     Open(usize),
-    Launched(&'static str, Result<i32, String>),
+    Launched(String, Result<i32, String>),
     StatusTap,
     AppPage(usize),
     // Settings
@@ -73,6 +74,10 @@ pub struct Home {
     walls: Vec<String>,
     pin_setup: Option<PinSetup>,
     preview_sleep: bool,
+    /// Started again after a handoff (KOReader): skip the PIN.
+    resumed: bool,
+    /// App to open right away (`--launch <id>`).
+    launch_first: Option<String>,
 }
 
 const DEV_APPS: &str = "home.dev_apps";
@@ -81,7 +86,21 @@ impl Home {
     fn new() -> Self {
         let prefs = Prefs::system();
         let apps = apps::list(prefs.get_bool(DEV_APPS, false));
-        Home { screen: Screen::Home, tab: Tab::Display, prefs, apps, page: 0, walls: sysui::wallpapers(), pin_setup: None, preview_sleep: false }
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let resumed = args.iter().any(|a| a == "--resume");
+        let launch_first = args.iter().position(|a| a == "--launch").and_then(|i| args.get(i + 1)).cloned();
+        Home {
+            screen: Screen::Home,
+            tab: Tab::Display,
+            prefs,
+            apps,
+            page: 0,
+            walls: sysui::wallpapers(),
+            pin_setup: None,
+            preview_sleep: false,
+            resumed,
+            launch_first,
+        }
     }
 
     fn minimal(&self) -> bool {
@@ -120,7 +139,7 @@ impl Home {
             .enumerate()
             .map(|(i, a)| {
                 let bullet = canvas(12, 12, |p, r| p.circle(r.x as i32 + 6, r.y as i32 + 6, 5, BLACK, None));
-                let item = plate(row(vec![bullet, text(a.name).size(30).max_lines(1)]).gap(20), 14, 2);
+                let item = plate(row(vec![bullet, text(a.name.clone()).size(30).max_lines(1)]).gap(20), 14, 2);
                 row(vec![item, spacer()]).pad(38, 6).on_tap(Msg::Open(i))
             })
             .collect();
@@ -172,8 +191,8 @@ impl Home {
             .iter()
             .enumerate()
             .map(|(i, a)| {
-                let tile = col(vec![spacer(), icon(a.icon, 38), spacer()]).align(Align::Center).w(76).h(76).border(2.5, BLACK).radius(20.0);
-                col(vec![row(vec![spacer(), tile, spacer()]), text(a.name).size(15).bold().center_text().max_lines(1)]).gap(6).fill_w().on_tap(Msg::Open(i))
+                let tile = col(vec![spacer(), a.icon_el(38), spacer()]).align(Align::Center).w(76).h(76).border(2.5, BLACK).radius(20.0);
+                col(vec![row(vec![spacer(), tile, spacer()]), text(a.name.clone()).size(15).bold().center_text().max_lines(1)]).gap(6).fill_w().on_tap(Msg::Open(i))
             })
             .collect();
         let mut rows = Vec::new();
@@ -195,19 +214,22 @@ impl Home {
         .gap(10)
     }
 
+    fn launch(&self, m: &AppManifest, ctx: &mut Ctx<Msg>) {
+        let name = m.name.clone();
+        ctx.launch(&m.exec.to_string_lossy(), &[], move |r| Msg::Launched(name.clone(), r));
+    }
+
     fn open(&mut self, i: usize, ctx: &mut Ctx<Msg>) {
-        let Some(a) = self.apps.get(i).copied() else { return };
-        match a.action {
-            Action::Launch(bin) => ctx.launch(bin, &[], move |r| Msg::Launched(a.name, r)),
+        let Some(a) = self.apps.get(i).cloned() else { return };
+        match &a.action {
+            Action::Launch(m) => self.launch(m, ctx),
             Action::Settings => {
                 self.screen = Screen::Settings;
                 ctx.full_refresh();
             }
             Action::KOReader => {
-                if cfg!(target_arch = "arm") {
-                    ctx.exit(apps::EXIT_KOREADER);
-                } else {
-                    ctx.toast("KOReader only runs on the Kindle");
+                if let Err(e) = handoff::open_in_koreader(ctx, None, None) {
+                    ctx.toast(e);
                 }
             }
             Action::Kindle => ctx.quit(),
@@ -219,7 +241,15 @@ impl App for Home {
     type Msg = Msg;
 
     fn setup(&mut self, _fonts: &mut Fonts, ctx: &mut Ctx<Msg>) {
-        ctx.lock();
+        if !self.resumed {
+            ctx.lock();
+        }
+        if let Some(id) = self.launch_first.take() {
+            match inkpad::ui::apps::find(&id) {
+                Some(m) => self.launch(&m, ctx),
+                None => ctx.toast(format!("App {id} is not installed")),
+            }
+        }
     }
 
     fn status_bar(&self) -> bool {
@@ -244,6 +274,9 @@ impl App for Home {
                 self.reload();
                 match r {
                     Ok(0) => {}
+                    // The app asked for a handoff (e.g. open a book in
+                    // KOReader): pass it on to the launcher script.
+                    Ok(handoff::EXIT_HANDOFF) => ctx.exit(handoff::EXIT_HANDOFF),
                     Ok(code) => ctx.toast(format!("{name} closed (code {code})")),
                     Err(e) => ctx.toast(format!("Couldn't open {name}: {e}")),
                 }

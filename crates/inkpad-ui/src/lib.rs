@@ -5,9 +5,11 @@
 //! The runtime renders, finds what changed on screen, and refreshes only
 //! that, with the right e-ink waveform.
 
+pub mod apps;
 pub mod assets;
 pub mod clock;
 pub mod el;
+pub mod handoff;
 pub mod icons;
 pub mod keyboard;
 pub mod layout;

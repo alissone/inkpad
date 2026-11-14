@@ -86,6 +86,18 @@ In the simulator, **F2** is the power button. Simulator data lives in `data/` (g
 
 ---
 
+### Apps live in their own repositories
+
+inkpad is the system: the framework, home, Settings and the system UI. Apps such as [Library](../inkpad-library) and the upcoming Tasks app are separate projects that depend on the `inkpad` crate, the way phone apps depend on an SDK. Each app project has:
+
+- `Cargo.toml` with `inkpad = { path = "../inkpad/crates/inkpad" }` (a git dependency once inkpad is published);
+- `.cargo/config.toml`, copied from inkpad, for the Kindle linker;
+- `app.json`, a manifest such as `{ "id": "library", "name": "Library", "exec": "library", "icon": "library-big" }`.
+
+`scripts\install-app.ps1 <app folder> [-Kindle E:]` builds the app and copies it to `apps/<id>/`, together with its manifest and `assets/`. That folder is `%LOCALAPPDATA%\inkpadpps` in the simulator and `/mnt/us/inkpad/apps` on the Kindle. Home lists whatever is installed there.
+
+An app can hand the device to KOReader with `handoff::open_in_koreader(ctx, Some(file), Some("my-app"))`. inkpad's launcher runs KOReader, and when KOReader closes it comes back to home and reopens that app. `handoff::open_in_kindle_reader` opens Amazon books in the stock reader; that one is experimental.
+
 ## Writing an app
 
 An app is a state struct. `view` turns the state into an element tree, and `update` changes the state when a message arrives. The runtime does the rest:
@@ -252,6 +264,7 @@ Environment overrides for other devices (set them in `inkpad.sh`):
 - [x] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
 - [ ] **M4, Tasks app:** a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
 - [x] **Home screen:** launcher (minimal and cards layouts), Settings, wallpapers, sleep screen, PIN lock, preferences storage
+- [x] **Apps as separate projects:** app manifests, `install-app.ps1`, KOReader handoff; first app: [Library](../inkpad-library)
 - [ ] **Later:**
   - home widgets: calendar agenda, weather, next tasks;
   - a Claude assistant app;

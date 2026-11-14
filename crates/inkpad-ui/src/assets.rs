@@ -15,6 +15,10 @@ pub fn asset_dirs() -> Vec<PathBuf> {
     if let Ok(p) = std::env::var("INKPAD_ASSETS") {
         v.push(PathBuf::from(p));
     }
+    // An app's own assets, installed next to its binary.
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("assets"))) {
+        v.push(dir);
+    }
     v.push(PathBuf::from("/mnt/us/inkpad/assets"));
     v.push(PathBuf::from("assets"));
     v.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets"));

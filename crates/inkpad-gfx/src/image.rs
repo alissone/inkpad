@@ -23,11 +23,79 @@ impl GrayImage {
         GrayImage { width, height, pixels: vec![gray; (width * height) as usize], alpha: None }
     }
 
-    /// Load a `.png` or `.svg` file. SVGs render at their natural size.
+    /// Load a PNG, JPEG or SVG file. SVGs render at their natural size.
     pub fn load(path: &std::path::Path) -> Result<Self, String> {
         let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let is_svg = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg"));
-        if is_svg { Self::from_svg(&data, None) } else { Self::from_png(&data) }
+        if is_svg { Self::from_svg(&data, None) } else { Self::from_bytes(&data) }
+    }
+
+    /// Decode PNG or JPEG data, detected from its first bytes.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, String> {
+        if data.starts_with(&[0x89, b'P', b'N', b'G']) {
+            Self::from_png(data)
+        } else if data.starts_with(&[0xFF, 0xD8]) {
+            Self::from_jpeg(data)
+        } else if data.iter().take(256).any(|&b| b == b'<') && data.windows(4).take(1024).any(|w| w == b"<svg") {
+            Self::from_svg(data, None)
+        } else {
+            Err("unknown image format (PNG, JPEG and SVG are supported)".into())
+        }
+    }
+
+    pub fn from_jpeg(data: &[u8]) -> Result<Self, String> {
+        Self::from_jpeg_scaled(data, None)
+    }
+
+    /// Decode PNG/JPEG for display at about `min_w`×`min_h`: JPEGs are
+    /// decoded at 1/2, 1/4 or 1/8 size when that's still big enough, which
+    /// is several times faster (cover thumbnails on a slow CPU).
+    pub fn from_bytes_for(data: &[u8], min_w: u32, min_h: u32) -> Result<Self, String> {
+        if data.starts_with(&[0xFF, 0xD8]) {
+            Self::from_jpeg_scaled(data, Some((min_w, min_h)))
+        } else {
+            Self::from_bytes(data)
+        }
+    }
+
+    fn from_jpeg_scaled(data: &[u8], min: Option<(u32, u32)>) -> Result<Self, String> {
+        let mut dec = jpeg_decoder::Decoder::new(std::io::Cursor::new(data));
+        if let Some((w, h)) = min {
+            dec.read_info().map_err(|e| e.to_string())?;
+            dec.scale(w.min(u16::MAX as u32) as u16, h.min(u16::MAX as u32) as u16).map_err(|e| e.to_string())?;
+        }
+        let px = dec.decode().map_err(|e| e.to_string())?;
+        let info = dec.info().ok_or("JPEG without header")?;
+        let (w, h) = (info.width as u32, info.height as u32);
+        let pixels: Vec<u8> = match info.pixel_format {
+            jpeg_decoder::PixelFormat::L8 => px,
+            jpeg_decoder::PixelFormat::L16 => px.chunks_exact(2).map(|c| c[0]).collect(),
+            jpeg_decoder::PixelFormat::RGB24 => px.chunks_exact(3).map(|c| luma(c[0], c[1], c[2])).collect(),
+            jpeg_decoder::PixelFormat::CMYK32 => px
+                .chunks_exact(4)
+                .map(|c| {
+                    let k = 255 - c[3] as u32;
+                    let ch = |v: u8| ((255 - v as u32) * k / 255) as u8;
+                    luma(ch(c[0]), ch(c[1]), ch(c[2]))
+                })
+                .collect(),
+        };
+        if pixels.len() != (w * h) as usize {
+            return Err("JPEG size mismatch".into());
+        }
+        Ok(GrayImage { width: w, height: h, pixels, alpha: None })
+    }
+
+    /// Encode as an 8-bit grayscale PNG (alpha is dropped).
+    pub fn to_png(&self) -> Result<Vec<u8>, String> {
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, self.width, self.height);
+        enc.set_color(png::ColorType::Grayscale);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().map_err(|e| e.to_string())?;
+        w.write_image_data(&self.pixels).map_err(|e| e.to_string())?;
+        w.finish().map_err(|e| e.to_string())?;
+        Ok(out)
     }
 
     pub fn from_png(data: &[u8]) -> Result<Self, String> {

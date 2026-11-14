@@ -104,6 +104,10 @@ if (-not $NoBuild) {
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) { throw "build failed" }
+    # Home lists installed apps: make sure the bundled samples are installed.
+    if ($apps -contains "home") {
+        foreach ($a in "apps\gallery", "tools\touchtest", "tools\gfxdemo") { & powershell -File "$root\scripts\install-app.ps1" "$root\$a" -NoBuild -Quiet 2>$null }
+    }
 }
 
 if ($Live) {

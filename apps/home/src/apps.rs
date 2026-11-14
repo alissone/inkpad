@@ -1,58 +1,49 @@
-//! The apps the launcher shows.
+//! The apps the launcher shows: installed apps (from their manifests, see
+//! `inkpad::ui::apps`) plus the system entries.
 
-use inkpad::ui::app_installed;
+use inkpad::ui::apps::{self as registry, AppManifest};
+use inkpad::ui::handoff;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
-    /// Run an inkpad binary installed next to `home`.
-    Launch(&'static str),
+    /// Run an installed app.
+    Launch(AppManifest),
     /// The built-in Settings screen.
     Settings,
-    /// Leave inkpad and start KOReader.
+    /// Hand over to KOReader; come back to home when it closes.
     KOReader,
     /// Leave inkpad and go back to the stock Kindle UI.
     Kindle,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct AppEntry {
-    pub name: &'static str,
-    pub icon: &'static str,
+    pub name: String,
+    pub icon: String,
     pub action: Action,
-    /// Developer tools, hidden unless enabled in Settings.
-    pub dev: bool,
 }
 
-const KNOWN: &[AppEntry] = &[
-    AppEntry { name: "Tasks", icon: "list-todo", action: Action::Launch("tasks"), dev: false },
-    AppEntry { name: "Gallery", icon: "shapes", action: Action::Launch("gallery"), dev: false },
-    AppEntry { name: "Touch test", icon: "pointer", action: Action::Launch("touchtest"), dev: true },
-    AppEntry { name: "Graphics demo", icon: "palette", action: Action::Launch("gfxdemo"), dev: true },
-];
-
-pub const KOREADER_SH: &str = "/mnt/us/koreader/koreader.sh";
-/// Exit code that tells `inkpad.sh` to start KOReader after restoring the screen.
-pub const EXIT_KOREADER: i32 = 42;
-
-pub fn koreader_installed() -> bool {
-    std::path::Path::new(KOREADER_SH).exists() || cfg!(not(target_arch = "arm"))
-}
-
-/// Installed apps in launcher order, system entries last.
-pub fn list(show_dev: bool) -> Vec<AppEntry> {
-    let mut v: Vec<AppEntry> = KNOWN
-        .iter()
-        .filter(|a| show_dev || !a.dev)
-        .filter(|a| match a.action {
-            Action::Launch(bin) => app_installed(bin),
-            _ => true,
-        })
-        .copied()
-        .collect();
-    if koreader_installed() {
-        v.push(AppEntry { name: "KOReader", icon: "book-open", action: Action::KOReader, dev: false });
+impl AppEntry {
+    pub fn icon_el<M>(&self, size: u32) -> inkpad::ui::El<M> {
+        match &self.action {
+            Action::Launch(m) => registry::app_icon(m, size),
+            _ => inkpad::ui::icon(&self.icon, size),
+        }
     }
-    v.push(AppEntry { name: "Settings", icon: "settings", action: Action::Settings, dev: false });
-    v.push(AppEntry { name: "Kindle", icon: "book-marked", action: Action::Kindle, dev: false });
+}
+
+/// Installed apps in name order, then the system entries.
+pub fn list(show_dev: bool) -> Vec<AppEntry> {
+    let mut v: Vec<AppEntry> = registry::installed()
+        .into_iter()
+        .filter(|a| show_dev || !a.dev)
+        .map(|m| AppEntry { name: m.name.clone(), icon: m.icon.clone(), action: Action::Launch(m) })
+        .collect();
+    // In the simulator KOReader is listed (it explains itself when tapped).
+    if handoff::koreader_available() || cfg!(not(target_arch = "arm")) {
+        v.push(AppEntry { name: "KOReader".into(), icon: "book-open".into(), action: Action::KOReader });
+    }
+    v.push(AppEntry { name: "Settings".into(), icon: "settings".into(), action: Action::Settings });
+    v.push(AppEntry { name: "Kindle".into(), icon: "book-marked".into(), action: Action::Kindle });
     v
 }

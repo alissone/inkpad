@@ -352,7 +352,12 @@ impl<A: App> Runtime<A> {
         self.display = Box::new(Released(self.w, self.h));
         self.input = Box::new(Released(self.w, self.h));
         // Scripted simulator input belongs to this process, not the child.
-        let status = std::process::Command::new(&path).args(args).env_remove("INKPAD_TAPS").status();
+        let mut cmd = std::process::Command::new(&path);
+        cmd.args(args).env_remove("INKPAD_TAPS");
+        if let Some(dir) = path.parent() {
+            cmd.current_dir(dir);
+        }
+        let status = cmd.status();
         match reopen() {
             Ok((d, i)) => {
                 self.display = d;

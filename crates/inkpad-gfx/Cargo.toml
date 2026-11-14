@@ -11,4 +11,5 @@ include = ["src/**", "fonts/**", "Cargo.toml"]
 inkpad-hal = { path = "../inkpad-hal" }
 fontdue = "0.9"
 png = "0.17"
+jpeg-decoder = { version = "0.3", default-features = false }
 resvg = { version = "0.50", default-features = false }

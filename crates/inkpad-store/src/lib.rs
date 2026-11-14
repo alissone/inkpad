@@ -20,7 +20,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-pub use serde_json::{json, Value as JsonValue};
+pub use serde_json::{self, json, Value as JsonValue};
 
 /// Namespace for settings shared by the whole system (home screen, lock,
 /// sleep screen). Apps may read it; Settings writes it.
