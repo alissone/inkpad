@@ -1,0 +1,9 @@
+{
+  "id": "touchtest",
+  "name": "Touch test",
+  "exec": "touchtest",
+  "icon": "pointer",
+  "version": "0.1.0",
+  "description": "Draw with your finger: checks display and touch",
+  "dev": true
+}

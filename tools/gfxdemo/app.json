@@ -1,0 +1,9 @@
+{
+  "id": "gfxdemo",
+  "name": "Graphics demo",
+  "exec": "gfxdemo",
+  "icon": "palette",
+  "version": "0.1.0",
+  "description": "Hand-drawn task list (graphics layer only)",
+  "dev": true
+}
