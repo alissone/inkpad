@@ -10,6 +10,8 @@
 pub use inkpad_gfx as gfx;
 pub use inkpad_hal as hal;
 pub use inkpad_ui as ui;
+/// HTTPS requests and Wi-Fi on demand.
+pub use inkpad_net as net;
 
 use inkpad_hal::{Display, Input};
 use std::io;

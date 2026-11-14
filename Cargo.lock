@@ -395,6 +395,7 @@ version = "0.1.0"
 dependencies = [
  "inkpad-gfx",
  "inkpad-hal",
+ "inkpad-net",
  "inkpad-sim",
  "inkpad-ui",
 ]
@@ -415,6 +416,13 @@ name = "inkpad-hal"
 version = "0.1.0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "inkpad-net"
+version = "0.1.0"
+dependencies = [
+ "inkpad-hal",
 ]
 
 [[package]]

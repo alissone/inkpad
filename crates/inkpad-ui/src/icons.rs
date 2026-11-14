@@ -23,7 +23,7 @@ icons!(
     "book-marked", "book-open", "book-text", "calendar", "check", "chevron-down", "chevron-left", "chevron-right",
     "circle", "circle-check", "clock", "cloud", "code", "corner-down-left", "delete", "file-text", "folder",
     "folder-open", "grid-2x2", "hard-drive", "house", "image", "info", "layout-grid", "layout-list",
-    "library-big", "list", "list-todo", "lock", "lock-open", "log-out", "message-circle", "monitor",
+    "library-big", "list", "list-todo", "lock", "lock-open", "log-in", "log-out", "message-circle", "monitor",
     "moon", "palette", "pencil", "plus", "pointer", "power", "refresh-cw", "search", "settings", "shapes",
     "sliders-horizontal", "sparkles", "star", "sun", "tablet-smartphone", "trash-2", "triangle-alert", "type",
     "utensils", "wallpaper", "wifi", "wifi-off", "x",

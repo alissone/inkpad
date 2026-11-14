@@ -22,7 +22,7 @@ pub mod keys {
     pub const WALLPAPER: &str = "wallpaper";
     /// How much the wallpaper is faded behind text, percent (0–90).
     pub const WALLPAPER_FADE: &str = "wallpaper.fade";
-    /// Sleep screen: `"minimal"`, `"picture"` or `"calendar"`.
+    /// Sleep screen: `"minimal"`, `"picture"`, `"calendar"` or `"agenda"` (glances).
     pub const SLEEP_MODE: &str = "sleep.mode";
     pub const LOCK_HASH: &str = "lock.hash";
     pub const LOCK_SALT: &str = "lock.salt";
@@ -274,6 +274,31 @@ pub fn sleep_view<M>(prefs: &Prefs, now: &LocalTime, w: u32, h: u32) -> El<M> {
             .radius(18.0);
             let content = col(vec![spacer(), row(vec![spacer(), cal, spacer()]), spacer(), pill("Sleeping".into()), empty().h(36)]);
             with_wallpaper(wallpaper(prefs, w, h), content)
+        }
+        "agenda" => {
+            // Date, then what apps published (Tasks, …).
+            let mut kids = vec![
+                row(vec![
+                    col(vec![text(now.weekday_name().to_uppercase()).size(18).bold().color(60), text(format!("{} {}", now.day, now.month_name())).size(44).bold()]).fill_w(),
+                    month_dots(now, 8, 10),
+                ])
+                .gap(12)
+                .padding(18)
+                .bg(WHITE)
+                .border(3.0, BLACK)
+                .radius(18.0),
+            ];
+            let glances = crate::glance::all();
+            if glances.is_empty() {
+                kids.push(text("Nothing to show yet. Apps like Tasks appear here after they sync.").size(20).color(70).padding(18).bg(WHITE).radius(12.0));
+            }
+            let per = if glances.len() <= 1 { 14 } else { 6 };
+            for g in &glances {
+                kids.push(crate::glance::glance_card(g, per, 20));
+            }
+            kids.push(spacer());
+            kids.push(pill("Sleeping".into()));
+            with_wallpaper(wallpaper(prefs, w, h), col(kids).gap(16).pad(28, 30))
         }
         _ => {
             let card = col(vec![

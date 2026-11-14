@@ -68,6 +68,7 @@ enum Cmd<M> {
     After(Duration, M),
     Spawn(Box<dyn FnOnce() -> M + Send>),
     Prompt(String, String, bool, DoneFn<M>),
+    PromptSecret(String, DoneFn<M>),
     Launch(String, Vec<String>, LaunchFn<M>),
     Lock,
     SystemMenu,
@@ -104,6 +105,10 @@ impl<M> Ctx<M> {
     /// or `None` if cancelled.
     pub fn prompt(&mut self, title: &str, initial: &str, on_done: impl Fn(Option<String>) -> M + 'static) {
         self.cmds.push(Cmd::Prompt(title.into(), initial.into(), false, Box::new(on_done)));
+    }
+    /// Ask for a password: the text shows as dots.
+    pub fn prompt_password(&mut self, title: &str, on_done: impl Fn(Option<String>) -> M + 'static) {
+        self.cmds.push(Cmd::PromptSecret(title.into(), Box::new(on_done)));
     }
     /// Like [`Ctx::prompt`] but Enter inserts new lines.
     pub fn prompt_multiline(&mut self, title: &str, initial: &str, on_done: impl Fn(Option<String>) -> M + 'static) {
@@ -317,6 +322,11 @@ impl<A: App> Runtime<A> {
                     });
                 }
                 Cmd::Prompt(title, initial, multi, done) => self.prompt = Some((PromptState::new(&title, &initial, multi), done)),
+                Cmd::PromptSecret(title, done) => {
+                    let mut p = PromptState::new(&title, "", false);
+                    p.secret = true;
+                    self.prompt = Some((p, done));
+                }
                 Cmd::Launch(prog, args, done) => self.launches.push((prog, args, done)),
                 Cmd::Lock => self.lock_now(),
                 Cmd::SystemMenu => self.sys_menu = true,

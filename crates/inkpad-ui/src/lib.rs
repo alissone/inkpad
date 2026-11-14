@@ -9,6 +9,7 @@ pub mod apps;
 pub mod assets;
 pub mod clock;
 pub mod el;
+pub mod glance;
 pub mod handoff;
 pub mod icons;
 pub mod keyboard;

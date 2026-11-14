@@ -33,7 +33,7 @@ function Copy-Lf($src, $dst) {
     [IO.File]::WriteAllText($dst, $text)
 }
 
-New-Item -ItemType Directory -Force "$Drive\inkpad\apps", "$Drive\inkpad\assets\images", "$Drive\inkpad\assets\wallpapers", "$Drive\inkpad\assets\fonts", "$Drive\inkpad\data" | Out-Null
+New-Item -ItemType Directory -Force "$Drive\inkpad\apps", "$Drive\inkpad\assets\images", "$Drive\inkpad\assets\wallpapers", "$Drive\inkpad\assets\fonts", "$Drive\inkpad\assets\certs", "$Drive\inkpad\data" | Out-Null
 Copy-Item "$root\target\$triple\release\home" "$Drive\inkpad\home" -Force
 foreach ($a in $bundled) { & powershell -File "$root\scripts\install-app.ps1" "$root\$a" -Kindle $Drive -NoBuild }
 
@@ -44,6 +44,8 @@ foreach ($old in "InkpadGallery.sh", "InkpadDemo.sh") { Remove-Item "$Drive\docu
 Copy-Lf "$root\kindle\inkpad\inkpad.sh" "$Drive\inkpad\inkpad.sh"
 Get-ChildItem "$root\kindle\documents\*.sh" | ForEach-Object { Copy-Lf $_.FullName "$Drive\documents\$($_.Name)" }
 Copy-Item "$root\assets\images\*" "$Drive\inkpad\assets\images\" -Force
+# Current CA certificates for HTTPS (inkpad-net passes them to curl).
+Copy-Item "$root\assets\certs\*" "$Drive\inkpad\assets\certs\" -Force
 # Adds and updates wallpapers; ones you put on the Kindle yourself are kept.
 Copy-Item "$root\assets\wallpapers\*" "$Drive\inkpad\assets\wallpapers\" -Force
 # Local fonts (not in git, e.g. your own Bookerly copy) go along if present.

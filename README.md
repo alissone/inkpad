@@ -64,7 +64,7 @@ inkpad/
 └── docs/                Device notes and design docs
 ```
 
-Planned crate: `inkpad-net` (HTTPS, Wi-Fi on demand).
+`inkpad-net`: HTTPS (via curl) and Wi-Fi on demand.
 
 ### Home, lock and sleep
 
@@ -95,6 +95,11 @@ inkpad is the system: the framework, home, Settings and the system UI. Apps such
 - `app.json`, a manifest such as `{ "id": "library", "name": "Library", "exec": "library", "icon": "library-big" }`.
 
 `scripts\install-app.ps1 <app folder> [-Kindle E:]` builds the app and copies it to `apps/<id>/`, together with its manifest and `assets/`. That folder is `%LOCALAPPDATA%\inkpadpps` in the simulator and `/mnt/us/inkpad/apps` on the Kindle. Home lists whatever is installed there.
+
+Apps also get two system services:
+
+- **Networking** (`inkpad::net`): HTTPS requests through the system's `curl`, so no TLS library has to be cross-compiled. On the Kindle a current CA bundle (`assets/certs/cacert.pem`) is passed to curl. `net::ensure_online` switches Wi-Fi on only while it's needed, and there's a clock check.
+- **Glances** (`ui::glance`): an app publishes a short summary (for example Tasks: "6 open" and the next tasks). Home shows it on the minimal and cards layouts, and the **Agenda** sleep screen lists it.
 
 An app can hand the device to KOReader with `handoff::open_in_koreader(ctx, Some(file), Some("my-app"))`. inkpad's launcher runs KOReader, and when KOReader closes it comes back to home and reopens that app. `handoff::open_in_kindle_reader` opens Amazon books in the stock reader; that one is experimental.
 
@@ -213,7 +218,7 @@ The simulator imitates the panel: content refreshes show 16 gray levels, fast (D
 
 ## Installing on the Kindle
 
-Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). To do it by hand:
+Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). `powershell -File kindle\deploy-all.ps1` does that and also installs the app projects kept next to inkpad (`inkpad-library`, `inkpad-tasks`; change the list with `-Apps`). To do it by hand:
 
 1. Copy `kindle/inkpad/inkpad.sh` and the built binaries into an `inkpad/` folder at the drive's root.
 2. Copy the shortcuts from `kindle/documents/` into the drive's `documents/` folder.
@@ -262,9 +267,9 @@ Environment overrides for other devices (set them in `inkpad.sh`):
 - [x] **M1, hardware layer:** framebuffer and e-ink refresh ioctls, multitouch, a safe launcher
 - [x] **M2, graphics + simulator:** canvas, font rendering and text layout, and a desktop window that emulates the e-ink screen, so most development happens on a PC
 - [x] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
-- [ ] **M4, Tasks app:** a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
+- [x] **M4, Tasks app** ([inkpad-tasks](../inkpad-tasks)): a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
 - [x] **Home screen:** launcher (minimal and cards layouts), Settings, wallpapers, sleep screen, PIN lock, preferences storage
-- [x] **Apps as separate projects:** app manifests, `install-app.ps1`, KOReader handoff; first app: [Library](../inkpad-library)
+- [x] **Apps as separate projects:** app manifests, `install-app.ps1`, KOReader handoff; apps: [Library](../inkpad-library), [Tasks](../inkpad-tasks)
 - [ ] **Later:**
   - home widgets: calendar agenda, weather, next tasks;
   - a Claude assistant app;

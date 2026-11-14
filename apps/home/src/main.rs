@@ -39,6 +39,7 @@ pub enum Msg {
     Launched(String, Result<i32, String>),
     StatusTap,
     AppPage(usize),
+    OpenApp(String),
     // Settings
     Back,
     Tab(Tab),
@@ -78,6 +79,8 @@ pub struct Home {
     resumed: bool,
     /// App to open right away (`--launch <id>`).
     launch_first: Option<String>,
+    /// What apps published for the home screen.
+    glances: Vec<inkpad::ui::glance::Glance>,
 }
 
 const DEV_APPS: &str = "home.dev_apps";
@@ -100,6 +103,7 @@ impl Home {
             preview_sleep: false,
             resumed,
             launch_first,
+            glances: inkpad::ui::glance::all(),
         }
     }
 
@@ -111,6 +115,7 @@ impl Home {
         self.prefs.refresh();
         self.apps = apps::list(self.prefs.get_bool(DEV_APPS, false));
         self.walls = sysui::wallpapers();
+        self.glances = inkpad::ui::glance::all();
     }
 
     // ---- minimal layout ----
@@ -138,8 +143,7 @@ impl Home {
             .iter()
             .enumerate()
             .map(|(i, a)| {
-                let bullet = canvas(12, 12, |p, r| p.circle(r.x as i32 + 6, r.y as i32 + 6, 5, BLACK, None));
-                let item = plate(row(vec![bullet, text(a.name.clone()).size(30).max_lines(1)]).gap(20), 14, 2);
+                let item = plate(text(a.name.clone()).size(30).max_lines(1), 14, 2);
                 row(vec![item, spacer()]).pad(38, 6).on_tap(Msg::Open(i))
             })
             .collect();
@@ -149,6 +153,11 @@ impl Home {
             row(vec![spacer(), sysui::clock_box(&now, 104), spacer()]),
             empty().h(18),
             row(vec![spacer(), plate(month, 16, 10), spacer()]),
+            empty().h(18),
+            col(self.glances.iter().take(3).map(|g| {
+                let line = row(vec![icon(if inkpad::ui::icons::NAMES.contains(&g.icon.as_str()) { &g.icon } else { "app-window" }, 22), text(format!("{} · {}", g.title, g.note)).size(19).bold().max_lines(1)]).gap(10);
+                row(vec![spacer(), plate(line, 12, 4), spacer()]).on_tap(Msg::OpenApp(g.id.clone()))
+            }).collect()).gap(6),
             spacer(),
             col(list),
             empty().h(30),
@@ -207,6 +216,7 @@ impl Home {
         col(vec![
             header,
             widgets,
+            col(self.glances.iter().take(2).map(|g| inkpad::ui::glance::glance_card(g, 3, 17).on_tap(Msg::OpenApp(g.id.clone()))).collect()).gap(10).pad(24, 0),
             empty().h(14),
             text("Apps").size(18).bold().color(60).pad(28, 0),
             paged(rows, self.page, Msg::AppPage),
@@ -283,6 +293,10 @@ impl App for Home {
             }
             Msg::StatusTap => ctx.system_menu(),
             Msg::AppPage(p) => self.page = p,
+            Msg::OpenApp(id) => match inkpad::ui::apps::find(&id) {
+                Some(m) => self.launch(&m, ctx),
+                None => ctx.toast(format!("App {id} is not installed")),
+            },
             other => self.settings_update(other, ctx),
         }
     }

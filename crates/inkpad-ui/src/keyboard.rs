@@ -26,11 +26,13 @@ pub struct PromptState {
     pub text: String,
     pub layer: Layer,
     pub multiline: bool,
+    /// Show dots instead of the text (passwords).
+    pub secret: bool,
 }
 
 impl PromptState {
     pub fn new(title: &str, initial: &str, multiline: bool) -> Self {
-        PromptState { title: title.into(), text: initial.into(), layer: Layer::Lower, multiline }
+        PromptState { title: title.into(), text: initial.into(), layer: Layer::Lower, multiline, secret: false }
     }
 
     /// Apply a key. Returns true when the user pressed Enter on a
@@ -114,7 +116,7 @@ pub fn keyboard<M>(layer: Layer, wrap: &dyn Fn(KeyAct) -> M) -> El<M> {
 
 /// Full-screen prompt: title, the text so far, buttons, keyboard.
 pub fn prompt_view<M>(p: &PromptState, wrap: &dyn Fn(KeyAct) -> M, cancel: M, done: M) -> El<M> {
-    let shown = format!("{}|", p.text);
+    let shown = if p.secret { format!("{}|", "•".repeat(p.text.chars().count())) } else { format!("{}|", p.text) };
     let field = text(shown).size(26).max_lines(5).padding(16).border(2.5, BLACK).radius(12.0).fill_w();
     let head = col(vec![
         text(p.title.clone()).size(30).bold(),

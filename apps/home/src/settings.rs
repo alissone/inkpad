@@ -16,7 +16,7 @@ const TABS: [(Tab, &str, &str); 6] = [
 ];
 
 const HOME_STYLES: [(&str, &str); 2] = [("minimal", "Minimal"), ("cards", "Cards")];
-const SLEEP_MODES: [(&str, &str); 3] = [("minimal", "Minimal"), ("picture", "Picture"), ("calendar", "Calendar")];
+const SLEEP_MODES: [(&str, &str); 4] = [("minimal", "Minimal"), ("picture", "Picture"), ("calendar", "Month"), ("agenda", "Agenda")];
 const FADES: [(i64, &str); 4] = [(0, "Off"), (35, "Light"), (55, "Medium"), (75, "Strong")];
 
 fn index_of<T: PartialEq + Copy>(list: &[(T, &str)], v: T) -> usize {
@@ -133,6 +133,7 @@ impl Home {
             1 if !has_wall => "Picture needs a wallpaper; shows Minimal until you pick one.",
             1 => "Your wallpaper, full strength, with a small date label.",
             2 => "This month's calendar, framed.",
+            3 => "The date, plus what your apps publish: your open tasks, for example.",
             _ => "Moon, date and the month's progress dots.",
         };
         col(vec![
@@ -239,7 +240,7 @@ impl Home {
                 ctx.refresh_status();
             }
             Msg::RefreshScreen => ctx.full_refresh(),
-            Msg::Open(_) | Msg::Launched(..) | Msg::StatusTap | Msg::AppPage(_) => {}
+            Msg::Open(_) | Msg::Launched(..) | Msg::StatusTap | Msg::AppPage(_) | Msg::OpenApp(_) => {}
         }
     }
 }

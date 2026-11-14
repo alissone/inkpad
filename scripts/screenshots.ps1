@@ -104,10 +104,17 @@ if (-not $NoBuild) {
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) { throw "build failed" }
-    # Home lists installed apps: make sure the bundled samples are installed.
-    if ($apps -contains "home") {
-        foreach ($a in "apps\gallery", "tools\touchtest", "tools\gfxdemo") { & powershell -File "$root\scripts\install-app.ps1" "$root\$a" -NoBuild -Quiet 2>$null }
+}
+
+# Home lists installed apps. Shots use their own apps folder with just the
+# bundled samples, so they look the same whatever else you've installed.
+if (-not $Live -and $apps -contains "home") {
+    $env:INKPAD_APPS = Join-Path ([IO.Path]::GetTempPath()) "inkpad-shots-apps"
+    Remove-Item -Recurse -Force $env:INKPAD_APPS -ErrorAction SilentlyContinue
+    if (-not (Test-Path "$root\target\release\gallery.exe")) {
+        Push-Location $root; cargo build --release -p gallery -p gfxdemo -p touchtest 2>$null; Pop-Location
     }
+    foreach ($a in "apps\gallery", "tools\touchtest", "tools\gfxdemo") { & powershell -File "$root\scripts\install-app.ps1" "$root\$a" -NoBuild -Quiet 2>$null }
 }
 
 if ($Live) {
@@ -140,7 +147,7 @@ foreach ($s in $shots) {
     if (Test-Path $png) { Write-Host ("  ok  {0,-18} {1}" -f $name, $desc); $done += , $s }
     else { Write-Host ("  FAIL {0,-18} (no image)" -f $name) -ForegroundColor Red }
 }
-Remove-Item Env:INKPAD_SNAPSHOT, Env:INKPAD_TAPS, Env:INKPAD_DATA -ErrorAction SilentlyContinue
+Remove-Item Env:INKPAD_SNAPSHOT, Env:INKPAD_TAPS, Env:INKPAD_DATA, Env:INKPAD_APPS -ErrorAction SilentlyContinue
 Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
 Pop-Location
 

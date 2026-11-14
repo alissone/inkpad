@@ -1,0 +1,9 @@
+[package]
+name = "inkpad-net"
+description = "Networking for inkpad apps: HTTPS requests and Wi-Fi on demand"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+inkpad-hal = { path = "../inkpad-hal" }
