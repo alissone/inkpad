@@ -4,8 +4,9 @@
 # Layout on the Kindle:
 #   inkpad/inkpad.sh        launcher (takes and restores the screen)
 #   inkpad/home             the home app
-#   inkpad/apps/<id>/       installed apps (bundled samples here; your own
-#                           apps via scripts\install-app.ps1 <path> -Kindle E:)
+#   inkpad/apps/<id>/       installed apps (this workspace's apps here; apps
+#                           from other repos via kindle\deploy-all.ps1 or
+#                           scripts\install-app.ps1 <path> -Kindle E:)
 #   inkpad/assets/          shared images, wallpapers, fonts
 #   inkpad/data/            settings and app data
 #   documents/Inkpad.sh     library shortcut that opens home
@@ -13,7 +14,8 @@ param([string]$Drive = "E:", [switch]$NoBuild)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $triple = "armv7-unknown-linux-musleabi"
-$bundled = @("apps\gallery", "tools\touchtest", "tools\gfxdemo")
+# Apps in this workspace that go on the Kindle (package name = folder name).
+$bundled = @("apps\library", "apps\news", "apps\calculator", "apps\gallery", "tools\touchtest", "tools\gfxdemo")
 $selfContained = "$env:USERPROFILE\.rustup\toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained"
 $env:Path = "$env:USERPROFILE\.cargo\bin;$selfContained;$env:Path"
 
@@ -21,7 +23,8 @@ if (-not (Test-Path "$Drive\documents")) { throw "No Kindle at $Drive (is it in 
 
 if (-not $NoBuild) {
     Push-Location $root
-    cargo build --release --target $triple -p home -p gallery -p gfxdemo -p touchtest
+    $pkgs = @("-p", "home") + ($bundled | ForEach-Object { "-p"; Split-Path $_ -Leaf })
+    cargo build --release --target $triple @pkgs
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) { throw "build failed" }

@@ -52,6 +52,9 @@ inkpad/
 │   └── inkpad-sim/      Desktop simulator: e-ink-like window, mouse = finger, headless PNG snapshots
 ├── apps/
 │   ├── home/            The launcher: minimal or cards layout, Settings, launches the other apps
+│   ├── library/         Your books as a cover grid; opens them in KOReader or the Kindle reader
+│   ├── news/            Offline-first RSS reader with pictures and book-like text
+│   ├── calculator/      iPhone-style calculator that writes the whole expression as you type
 │   └── gallery/         Every widget on five tabs: Home (clock), Tasks, Widgets, Fonts, Media
 ├── tools/
 │   ├── hello/           M0: checks that the binary runs and reports device facts
@@ -86,15 +89,16 @@ In the simulator, **F2** is the power button. Simulator data lives in `data/` (g
 
 ---
 
-### Apps live in their own repositories
+### Apps
 
-inkpad is the system: the framework, home, Settings and the system UI. Apps such as [Library](../inkpad-library) and the upcoming Tasks app are separate projects that depend on the `inkpad` crate, the way phone apps depend on an SDK. Each app project has:
+inkpad is the system: the framework, home, Settings and the system UI. Apps are separate programs that depend on the `inkpad` crate, the way phone apps depend on an SDK. Home launches them and they hand the screen back when they exit.
 
-- `Cargo.toml` with `inkpad = { path = "../inkpad/crates/inkpad" }` (a git dependency once inkpad is published);
-- `.cargo/config.toml`, copied from inkpad, for the Kindle linker;
-- `app.json`, a manifest such as `{ "id": "library", "name": "Library", "exec": "library", "icon": "library-big" }`.
+- **In this repository** (`apps/`): [Library](apps/library), [News](apps/news), [Calculator](apps/calculator) and the widget [Gallery](apps/gallery). Each is its own crate in the Cargo workspace, with its own README and `scripts/dev.ps1`.
+- **In other repositories:** an app can live anywhere, for example one tied to your own accounts that you keep private. Depend on inkpad with `inkpad = { git = "https://github.com/alissone/inkpad" }` (or a `path` to a local checkout), and copy `.cargo/config.toml` for the Kindle linker.
 
-`scripts\install-app.ps1 <app folder> [-Kindle E:]` builds the app and copies it to `apps/<id>/`, together with its manifest and `assets/`. That folder is `%LOCALAPPDATA%\inkpadpps` in the simulator and `/mnt/us/inkpad/apps` on the Kindle. Home lists whatever is installed there.
+Every app folder has an `app.json` manifest, such as `{ "id": "library", "name": "Library", "exec": "library", "icon": "library-big" }`, and may have an `assets/` folder (News ships its book font there).
+
+`scripts\install-app.ps1 <app folder> [-Kindle E:]` builds an app and copies it, with its manifest and `assets/`, to `apps/<id>/`. That's `%LOCALAPPDATA%\inkpad\apps` in the simulator and `/mnt/us/inkpad/apps` on the Kindle. Home lists whatever is installed there.
 
 Apps also get two system services:
 
@@ -218,11 +222,15 @@ The simulator imitates the panel: content refreshes show 16 gray levels, fast (D
 
 ## Installing on the Kindle
 
-Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1` (it builds everything and copies it to `E:`). `powershell -File kindle\deploy-all.ps1` does that and also installs the app projects kept next to inkpad (`inkpad-library`, `inkpad-tasks`, `inkpad-calculator`, `inkpad-news`; change the list with `-Apps`). To do it by hand:
+Connect the Kindle by USB. It mounts as a drive, which is `/mnt/us` on the device. The quick way, on Windows, is to run `powershell -File kindle\deploy.ps1`. It builds home and every app in this repository and copies them, with the assets, to `E:` (`-Drive F:` for another letter).
+
+`powershell -File kindle\deploy-all.ps1` does the same, then also installs apps from other repositories: the folders you pass with `-Apps ..\my-app`, plus those listed in `kindle\extra-apps.txt` (one folder per line, relative to inkpad). That file is git-ignored, so a private app's location never ends up in the repository.
+
+To do it by hand:
 
 1. Copy `kindle/inkpad/inkpad.sh` and the built binaries into an `inkpad/` folder at the drive's root.
 2. Copy the shortcuts from `kindle/documents/` into the drive's `documents/` folder.
-3. Eject the Kindle. The shortcuts appear in the library: **Inkpad touch test**, **Inkpad hello test**.
+3. Eject the Kindle. The shortcuts appear in the library: **Inkpad** (home), plus **Inkpad touch test** and **Inkpad hello test** for checking a new device.
 
 > Shell scripts **must use LF line endings**. A script saved with Windows CRLF line endings fails silently on the Kindle.
 
@@ -267,9 +275,9 @@ Environment overrides for other devices (set them in `inkpad.sh`):
 - [x] **M1, hardware layer:** framebuffer and e-ink refresh ioctls, multitouch, a safe launcher
 - [x] **M2, graphics + simulator:** canvas, font rendering and text layout, and a desktop window that emulates the e-ink screen, so most development happens on a PC
 - [x] **M3, UI toolkit:** a declarative widget tree (`view(state) → widgets`, `update(msg)`), layout, a refresh scheduler, and widgets: Text, Button, Checkbox row, TitleBar, PagedList, Dialog, Toast, on-screen Keyboard
-- [x] **M4, Tasks app** ([inkpad-tasks](../inkpad-tasks)): a to-do list synced with a Supabase backend: tick tasks done, add new ones with the keyboard, and keep an offline cache
+- [x] **M4, first real app:** a to-do list synced with a Supabase backend, with an offline change queue. It's tied to a personal account, so it lives in a private repository; it proved `inkpad::net`, glances and the Agenda sleep screen
 - [x] **Home screen:** launcher (minimal and cards layouts), Settings, wallpapers, sleep screen, PIN lock, preferences storage
-- [x] **Apps as separate projects:** app manifests, `install-app.ps1`, KOReader handoff; apps: [Library](../inkpad-library), [Tasks](../inkpad-tasks)
+- [x] **Apps:** app manifests, `install-app.ps1`, KOReader handoff; [Library](apps/library), [News](apps/news), [Calculator](apps/calculator)
 - [ ] **Later:**
   - home widgets: calendar agenda, weather, next tasks;
   - a Claude assistant app;
@@ -287,6 +295,10 @@ The project is early and the APIs will change. Issues and ideas are welcome, esp
 
 Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option. Unless you explicitly state otherwise, any contribution you submit for inclusion is dual-licensed as above, without additional terms.
 
-Bundled third-party assets: Atkinson Hyperlegible font (SIL Open Font License 1.1, `crates/inkpad-gfx/fonts/OFL.txt`), Lucide icons (ISC, `crates/inkpad-ui/icons/LICENSE`).
+Bundled third-party assets:
+- Atkinson Hyperlegible font: SIL Open Font License 1.1, `crates/inkpad-gfx/fonts/OFL.txt`.
+- Gentium Book Plus font (News): SIL Open Font License 1.1, `apps/news/assets/fonts/OFL.txt`.
+- Lucide icons: ISC, `crates/inkpad-ui/icons/LICENSE`.
+- Mozilla's CA certificate bundle: MPL 2.0, `assets/certs/README.txt`.
 
 inkpad is not affiliated with Amazon. Kindle is a trademark of Amazon.com, Inc.

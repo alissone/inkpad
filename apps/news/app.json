@@ -1,0 +1,8 @@
+{
+  "id": "news",
+  "name": "News",
+  "exec": "news",
+  "icon": "newspaper",
+  "version": "0.1.0",
+  "description": "Offline RSS reader with pictures and book-like text"
+}

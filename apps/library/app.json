@@ -1,0 +1,8 @@
+{
+  "id": "library",
+  "name": "Library",
+  "exec": "library",
+  "icon": "library-big",
+  "version": "0.1.0",
+  "description": "Your books as covers; opens them in KOReader or the Kindle reader"
+}

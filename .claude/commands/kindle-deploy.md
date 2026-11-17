@@ -1,5 +1,5 @@
 ---
-description: Build Inkpad and deploy it to a USB-mounted Kindle, then walk through the on-device checklist
+description: Build Inkpad and its apps, deploy them to a USB-mounted Kindle, then walk through the on-device checklist
 argument-hint: "[drive letter, default E:] [--no-build]"
 ---
 
@@ -13,19 +13,25 @@ Deploy Inkpad to the Kindle and verify it on the real panel.
 From the repo root run:
 
 ```
-powershell -File kindle\deploy.ps1 [-Drive E:] [-NoBuild]
+powershell -File kindle\deploy-all.ps1 [-Drive E:] [-NoBuild]
 ```
 
-The script builds `gallery`, `gfxdemo` and `touchtest` for `armv7-unknown-linux-musleabi`, then copies the binaries, launcher (`inkpad.sh`, LF endings), shortcuts, images and local fonts (e.g. Bookerly) to the Kindle. Pass `-NoBuild` if `--no-build` was requested.
+It runs `kindle\deploy.ps1`:
+- builds `home` and every app in `apps/` and `tools/` for `armv7-unknown-linux-musleabi`;
+- installs them into `inkpad/apps/<id>/`;
+- copies the launcher (`inkpad.sh`, LF endings), the shortcuts, the images, wallpapers and CA certificates, and local fonts (e.g. Bookerly).
 
-Report build/copy failures with the actual output. Do not retry blindly.
+After that it installs any apps from other repositories: those given with `-Apps`, and those listed in the git-ignored `kindle\extra-apps.txt`. A missing folder is skipped with a note. Pass `-NoBuild` if `--no-build` was requested.
+
+Report build or copy failures with the actual output. Do not retry blindly.
 
 ## 3. Hand off to the user
-Tell the user to eject the Kindle and open **"Inkpad gallery"**, then check:
+Tell the user to eject the Kindle and open **Inkpad** from the library, then check:
 
-- [ ] The clock shows local time (the one thing the simulator can't prove; uses our own small clock/timezone module, since the date/time crate needs a tool the Rust toolchain here lacks).
-- [ ] Bookerly and the icons look right on the real panel.
-- [ ] A tapped item flashes quickly.
-- [ ] Pages turn cleanly.
+- [ ] Home shows the local time and the installed apps; the top bar comes back after leaving.
+- [ ] Sleep/wake shows the chosen sleep screen; the PIN lock appears on wake if set.
+- [ ] Library opens a book in KOReader and comes back to the Library afterwards.
+- [ ] News: the refresh button switches Wi-Fi on, downloads, and stories read offline with pictures.
+- [ ] Bookerly and the icons look right on the real panel; pages turn cleanly.
 
 Then ask for the results and fix anything that failed.

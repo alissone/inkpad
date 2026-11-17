@@ -1,0 +1,8 @@
+{
+  "id": "calculator",
+  "name": "Calculator",
+  "exec": "calculator",
+  "icon": "calculator",
+  "version": "0.1.0",
+  "description": "A calculator that shows the whole expression as you type"
+}

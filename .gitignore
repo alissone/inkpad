@@ -7,3 +7,9 @@
 /target/
 # Settings and app data written by the simulator.
 /data/
+# Per-app screenshots (Library's show covers from your own books) and the
+# Library's local test books.
+/apps/*/screenshots/
+/apps/library/sample-books/
+# Your private, out-of-repo apps for kindle/deploy-all.ps1.
+/kindle/extra-apps.txt

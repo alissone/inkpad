@@ -1,0 +1,16 @@
+[package]
+name = "news"
+description = "News for inkpad: an offline-first RSS reader with pictures and book-like text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+inkpad = { path = "../../crates/inkpad" }
+# XML for RSS/Atom (pure Rust, no C needed for the Kindle build).
+roxmltree = "0.20"
+# WebP pictures (pure Rust too).
+image-webp = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
