@@ -13,6 +13,20 @@ I am not a Rust developer, so almost 100% of the code is written by coding agent
 
 ---
 
+## Screenshots
+
+Captured from the desktop simulator (`scripts\screenshots.ps1`).
+
+<table>
+<tr><td align="center" width="25%"><img src="screenshots/home.png" width="180" alt="home"><br><sub>Home tab: big clock, cards</sub></td><td align="center" width="25%"><img src="screenshots/system-menu.png" width="180" alt="system-menu"><br><sub>Status bar tapped: system menu</sub></td><td align="center" width="25%"><img src="screenshots/tasks.png" width="180" alt="tasks"><br><sub>Tasks tab, page 1</sub></td><td align="center" width="25%"><img src="screenshots/tasks-page2.png" width="180" alt="tasks-page2"><br><sub>Tasks swiped to page 2</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/tasks-toggled.png" width="180" alt="tasks-toggled"><br><sub>First two tasks ticked</sub></td><td align="center" width="25%"><img src="screenshots/tasks-hold-toast.png" width="180" alt="tasks-hold-toast"><br><sub>Long-press a task: toast</sub></td><td align="center" width="25%"><img src="screenshots/keyboard.png" width="180" alt="keyboard"><br><sub>Add-task prompt, empty</sub></td><td align="center" width="25%"><img src="screenshots/keyboard-typing.png" width="180" alt="keyboard-typing"><br><sub>Typed text, shift layer on</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/keyboard-numbers.png" width="180" alt="keyboard-numbers"><br><sub>Numbers layer</sub></td><td align="center" width="25%"><img src="screenshots/keyboard-accents.png" width="180" alt="keyboard-accents"><br><sub>Accents layer</sub></td><td align="center" width="25%"><img src="screenshots/task-added.png" width="180" alt="task-added"><br><sub>Task added + toast</sub></td><td align="center" width="25%"><img src="screenshots/widgets.png" width="180" alt="widgets"><br><sub>Widgets tab</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/widgets-syncing.png" width="180" alt="widgets-syncing"><br><sub>Background job running</sub></td><td align="center" width="25%"><img src="screenshots/widgets-switches.png" width="180" alt="widgets-switches"><br><sub>Both switches flipped</sub></td><td align="center" width="25%"><img src="screenshots/widgets-dialog.png" width="180" alt="widgets-dialog"><br><sub>Modal dialog</sub></td><td align="center" width="25%"><img src="screenshots/fonts.png" width="180" alt="fonts"><br><sub>Fonts tab (Bookerly if in assets/fonts)</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/media.png" width="180" alt="media"><br><sub>Dithered photo + icons</sub></td><td align="center" width="25%"><img src="screenshots/media-icons2.png" width="180" alt="media-icons2"><br><sub>Icon grid page 2</sub></td><td align="center" width="25%"><img src="screenshots/gfxdemo.png" width="180" alt="gfxdemo"><br><sub>M2 raw graphics demo</sub></td><td align="center" width="25%"><img src="screenshots/gfxdemo-tap.png" width="180" alt="gfxdemo-tap"><br><sub>M2 demo after a tap</sub></td></tr>
+</table>
+
+---
+
 ## Why
 
 E-ink devices are ideal for calm, ambient information. They're readable in sunlight, last weeks on a charge, and nothing flashes or demands attention. Old Kindles are cheap and everywhere, but their software only reads books. KOReader showed that a jailbroken Kindle can run serious native software. inkpad aims to be the *Flutter* of that world: a toolkit with real widgets, designed for e-ink from the start, so building a useful little app takes an afternoon.
