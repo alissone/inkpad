@@ -3,7 +3,6 @@
 *.log
 # Fonts you supply yourself (e.g. Bookerly) are proprietary; never commit them.
 /assets/fonts/
-/screenshots/
 /target/
 # Settings and app data written by the simulator.
 /data/

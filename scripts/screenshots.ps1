@@ -46,6 +46,11 @@ $lock1234 = "178,376;298,376;418,376;178,486"  # on the lock screen pad
 $setPin = "$hSettings;$($hTab.lock);$pinOn;$pin1234;$pin1234"
 $wall = '{"wallpaper":"ridges.png"}'
 
+# Sample glances (widgets apps publish) for the agenda sleep screen and home cards.
+$glTasks = '{"id":"tasks","title":"Tasks","icon":"check","note":"4 open","updated":0,"lines":["Buy milk","Call the dentist","Water the basil","Finish the report"]}'
+$glNews = '{"id":"news","title":"News","icon":"book-text","note":"synced 14:02","updated":0,"lines":["Quiet week for e-ink readers","Rust 1.9x released"]}'
+$glances = @{ tasks = $glTasks; news = $glNews }
+
 # name, app, description, tap script, [system prefs JSON to start with]
 # Every shot runs with its own empty data folder, so your settings are untouched.
 $shots = @(
@@ -65,6 +70,14 @@ $shots = @(
     @("sleep-minimal", "home", "Sleep screen: minimal", "sleep"),
     @("sleep-picture", "home", "Sleep screen: picture", "sleep", '{"wallpaper":"ridges.png","sleep.mode":"picture"}'),
     @("sleep-calendar", "home", "Sleep screen: calendar", "sleep", '{"wallpaper":"dunes.png","sleep.mode":"calendar"}'),
+    @("sleep-minimal-wall", "home", "Sleep screen: minimal over a wallpaper", "sleep", '{"wallpaper":"contours.png"}'),
+    @("sleep-calendar-plain", "home", "Sleep screen: month calendar, no wallpaper", "sleep", '{"sleep.mode":"calendar"}'),
+    @("sleep-agenda", "home", "Sleep screen: agenda with widgets", "sleep", '{"sleep.mode":"agenda"}', $glances),
+    @("sleep-agenda-wall", "home", "Sleep screen: agenda over a wallpaper", "sleep", '{"sleep.mode":"agenda","wallpaper":"dunes.png"}', $glances),
+    @("sleep-agenda-empty", "home", "Sleep screen: agenda, no widgets yet", "sleep", '{"sleep.mode":"agenda"}'),
+    @("home-minimal-widgets", "home", "Minimal home with widgets", "", '{}', $glances),
+    @("home-cards-widgets", "home", "Cards home with widgets", "", '{"home.style":"cards"}', $glances),
+    @("settings-sleep-agenda", "home", "Settings: Sleep screen, Agenda", "$hSettings;$($hTab.sleep)", '{"sleep.mode":"agenda"}'),
     @("lock-screen", "home", "Woken up with a PIN set", "$setPin;sleep;wake"),
     @("lock-wrong-pin", "home", "Wrong PIN", "$setPin;sleep;wake;178,376;178,376;178,376;178,376"),
     @("lock-wallpaper", "home", "Lock screen over a wallpaper", "$hSettings;$($hTab.lock);$pinOn;$pin1234;$pin1234;sleep;wake;178,376", '{"wallpaper":"contours.png"}'),
@@ -131,12 +144,13 @@ Push-Location $root
 $done = @()
 $data = Join-Path ([IO.Path]::GetTempPath()) "inkpad-shots-data"
 foreach ($s in $shots) {
-    $name, $app, $desc, $taps, $prefs = $s
+    $name, $app, $desc, $taps, $prefs, $gl = $s
     if ($name -notlike $Only) { continue }
     $png = Join-Path $Out "$name.png"
     Remove-Item $png -ErrorAction SilentlyContinue
     Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force "$data\prefs" | Out-Null
+    if ($gl) { New-Item -ItemType Directory -Force "$data\glance" | Out-Null; foreach ($k in $gl.Keys) { [IO.File]::WriteAllText("$data\glance\$k.json", $gl[$k]) } }
     if ($prefs) { [IO.File]::WriteAllText("$data\prefs\system.json", $prefs) }
     $env:INKPAD_DATA = $data
     $env:INKPAD_SNAPSHOT = $png

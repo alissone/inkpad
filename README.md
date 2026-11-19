@@ -17,6 +17,36 @@ I am not a Rust developer, so almost 100% of the code is written by coding agent
 
 Captured from the desktop simulator (`scripts\screenshots.ps1`).
 
+### Home screen
+
+<table>
+<tr><td align="center" width="25%"><img src="screenshots/home-minimal.png" width="180" alt="home-minimal"><br><sub>Home: minimal layout</sub></td><td align="center" width="25%"><img src="screenshots/home-minimal-wall.png" width="180" alt="home-minimal-wall"><br><sub>Minimal over a wallpaper</sub></td><td align="center" width="25%"><img src="screenshots/home-minimal-contours.png" width="180" alt="home-minimal-contours"><br><sub>Minimal, contours wallpaper</sub></td><td align="center" width="25%"><img src="screenshots/home-cards.png" width="180" alt="home-cards"><br><sub>Home: cards layout</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/home-minimal-widgets.png" width="180" alt="home-minimal-widgets"><br><sub>Minimal home with widgets</sub></td><td align="center" width="25%"><img src="screenshots/home-cards-widgets.png" width="180" alt="home-cards-widgets"><br><sub>Cards home with widgets</sub></td><td align="center" width="25%"><img src="screenshots/home-system-menu.png" width="180" alt="home-system-menu"><br><sub>Status tapped: system menu</sub></td><td align="center" width="25%"><img src="screenshots/home-launch-gallery.png" width="180" alt="home-launch-gallery"><br><sub>Opened Gallery and came back</sub></td></tr>
+</table>
+
+### Sleep screens
+
+<table>
+<tr><td align="center" width="25%"><img src="screenshots/sleep-minimal.png" width="180" alt="sleep-minimal"><br><sub>Sleep screen: minimal</sub></td><td align="center" width="25%"><img src="screenshots/sleep-minimal-wall.png" width="180" alt="sleep-minimal-wall"><br><sub>Sleep screen: minimal over a wallpaper</sub></td><td align="center" width="25%"><img src="screenshots/sleep-picture.png" width="180" alt="sleep-picture"><br><sub>Sleep screen: picture</sub></td><td align="center" width="25%"><img src="screenshots/sleep-calendar-plain.png" width="180" alt="sleep-calendar-plain"><br><sub>Sleep screen: month calendar, no wallpaper</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/sleep-calendar.png" width="180" alt="sleep-calendar"><br><sub>Sleep screen: calendar</sub></td><td align="center" width="25%"><img src="screenshots/sleep-agenda.png" width="180" alt="sleep-agenda"><br><sub>Sleep screen: agenda with widgets</sub></td><td align="center" width="25%"><img src="screenshots/sleep-agenda-wall.png" width="180" alt="sleep-agenda-wall"><br><sub>Sleep screen: agenda over a wallpaper</sub></td><td align="center" width="25%"><img src="screenshots/sleep-agenda-empty.png" width="180" alt="sleep-agenda-empty"><br><sub>Sleep screen: agenda, no widgets yet</sub></td></tr>
+</table>
+
+### Lock screen
+
+<table>
+<tr><td align="center" width="25%"><img src="screenshots/lock-screen.png" width="180" alt="lock-screen"><br><sub>Woken up with a PIN set</sub></td><td align="center" width="25%"><img src="screenshots/lock-wrong-pin.png" width="180" alt="lock-wrong-pin"><br><sub>Wrong PIN</sub></td><td align="center" width="25%"><img src="screenshots/lock-wallpaper.png" width="180" alt="lock-wallpaper"><br><sub>Lock screen over a wallpaper</sub></td><td></td></tr>
+</table>
+
+### Settings
+
+<table>
+<tr><td align="center" width="25%"><img src="screenshots/settings-display.png" width="180" alt="settings-display"><br><sub>Settings: Display</sub></td><td align="center" width="25%"><img src="screenshots/settings-wallpaper.png" width="180" alt="settings-wallpaper"><br><sub>Settings: Wallpaper</sub></td><td align="center" width="25%"><img src="screenshots/settings-lock.png" width="180" alt="settings-lock"><br><sub>Settings: Lock screen</sub></td><td align="center" width="25%"><img src="screenshots/settings-pin-setup.png" width="180" alt="settings-pin-setup"><br><sub>Choosing a PIN</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/settings-pin-on.png" width="180" alt="settings-pin-on"><br><sub>PIN set</sub></td><td align="center" width="25%"><img src="screenshots/settings-sleep.png" width="180" alt="settings-sleep"><br><sub>Settings: Sleep screen</sub></td><td align="center" width="25%"><img src="screenshots/settings-sleep-agenda.png" width="180" alt="settings-sleep-agenda"><br><sub>Settings: Sleep screen, Agenda</sub></td><td align="center" width="25%"><img src="screenshots/settings-network.png" width="180" alt="settings-network"><br><sub>Settings: Network</sub></td></tr>
+<tr><td align="center" width="25%"><img src="screenshots/settings-about.png" width="180" alt="settings-about"><br><sub>Settings: About</sub></td><td></td><td></td><td></td></tr>
+</table>
+
+### Widget gallery and demos
+
 <table>
 <tr><td align="center" width="25%"><img src="screenshots/home.png" width="180" alt="home"><br><sub>Home tab: big clock, cards</sub></td><td align="center" width="25%"><img src="screenshots/system-menu.png" width="180" alt="system-menu"><br><sub>Status bar tapped: system menu</sub></td><td align="center" width="25%"><img src="screenshots/tasks.png" width="180" alt="tasks"><br><sub>Tasks tab, page 1</sub></td><td align="center" width="25%"><img src="screenshots/tasks-page2.png" width="180" alt="tasks-page2"><br><sub>Tasks swiped to page 2</sub></td></tr>
 <tr><td align="center" width="25%"><img src="screenshots/tasks-toggled.png" width="180" alt="tasks-toggled"><br><sub>First two tasks ticked</sub></td><td align="center" width="25%"><img src="screenshots/tasks-hold-toast.png" width="180" alt="tasks-hold-toast"><br><sub>Long-press a task: toast</sub></td><td align="center" width="25%"><img src="screenshots/keyboard.png" width="180" alt="keyboard"><br><sub>Add-task prompt, empty</sub></td><td align="center" width="25%"><img src="screenshots/keyboard-typing.png" width="180" alt="keyboard-typing"><br><sub>Typed text, shift layer on</sub></td></tr>
