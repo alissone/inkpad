@@ -57,6 +57,32 @@ Captured from the desktop simulator (`scripts\screenshots.ps1`).
 
 ---
 
+### Apps running on real (old) Kindle
+
+#### Library 
+
+(auto scans books on documents/ folder, opens directly in KOReader)
+
+<img  width="25%" height="713" alt="image" src="https://github.com/user-attachments/assets/beb0d739-19b5-41c8-8016-4f6d5ab4e70a" />
+<img  width="25%" height="795" alt="image" src="https://github.com/user-attachments/assets/9e9a132e-5442-41b5-9c5e-094ded8d2035" />
+<img  width="25%" height="638" alt="image" src="https://github.com/user-attachments/assets/84e41f7e-4587-423f-9ddd-5a7d0b659d3d" />
+<img  width="25%" height="697" alt="image" src="https://github.com/user-attachments/assets/1a358030-7e1f-4776-b429-f65f17b8b54a" />
+
+#### Home Screen
+<img  width="25%" height="702" alt="image" src="https://github.com/user-attachments/assets/0bc4206f-1bde-469a-832c-8ee65dbf04de" />
+
+#### RSS News
+<img  width="25%" height="701" alt="image" src="https://github.com/user-attachments/assets/59406fcc-8802-489e-a658-4127a3f0197f" />
+<img  width="25%" height="679" alt="image" src="https://github.com/user-attachments/assets/443abbe0-5afb-48cb-9568-1563aa690bba" />
+<img  width="25%" height="747" alt="image" src="https://github.com/user-attachments/assets/865eb556-28f2-42fe-8f4a-90c0a0455c07" />
+<img  width="25%" height="706" alt="image" src="https://github.com/user-attachments/assets/05751fee-2f2a-4fc5-aa99-486147b0460f" />
+<img  width="25%" height="710" alt="image" src="https://github.com/user-attachments/assets/f7503865-9761-417a-a6b3-3124fedfabac" />
+<img  width="25%" height="750" alt="image" src="https://github.com/user-attachments/assets/73a066b6-8584-44e3-bd08-3a071d7fd243" />
+
+
+
+
+
 ## Why
 
 E-ink devices are ideal for calm, ambient information. They're readable in sunlight, last weeks on a charge, and nothing flashes or demands attention. Old Kindles are cheap and everywhere, but their software only reads books. KOReader showed that a jailbroken Kindle can run serious native software. inkpad aims to be the *Flutter* of that world: a toolkit with real widgets, designed for e-ink from the start, so building a useful little app takes an afternoon.
